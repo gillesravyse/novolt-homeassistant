@@ -1,4 +1,10 @@
+<p align="center">
+  <img src="custom_components/novolt/brand/logo@2x.png" alt="Novolt" width="340">
+</p>
+
 # Novolt for Home Assistant
+
+[![Open your Home Assistant instance and open this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=gillesravyse&repository=novolt-homeassistant&category=integration)
 
 Bring your [Novolt](https://novolt.be) site into Home Assistant: live power flows, battery state, dynamic electricity prices, the dispatch plan and Energy Dashboard-ready energy counters — all through Novolt's read-only cloud API.
 
