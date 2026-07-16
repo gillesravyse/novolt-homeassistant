@@ -6,15 +6,15 @@
 
 [![Open your Home Assistant instance and open this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=gillesravyse&repository=novolt-homeassistant&category=integration)
 
-Bring your [Novolt](https://novolt.be) site into Home Assistant: live power flows, battery state, dynamic electricity prices, the dispatch plan and Energy Dashboard-ready energy counters — all through Novolt's read-only cloud API.
+Bring your [Novolt](https://novolt.be) site into Home Assistant: live power flows, battery state, dynamic electricity prices, the dispatch plan and Energy Dashboard-ready energy counters, all through Novolt's read-only cloud API.
 
 ## Features
 
-- **Live power flows** — PV, grid (net / import / export), house load, battery power & state of charge, EV charging power (30 s polling by default).
-- **Energy Dashboard ready** — cumulative kWh counters for grid import/export, PV production and battery charge/discharge, integrated from the live measurements and restored across restarts.
-- **Dynamic prices** — the current retail and injection price for *your* tariff, with the full day-ahead curve as attributes (works with ApexCharts cards).
-- **Dispatch plan** — the battery command Novolt is running (idle / force charge / force discharge), the planned battery power with the 24 h schedule as attributes, and the cheap EV-charging hours.
-- **Honest data** — when telemetry or prices are stale or missing, entities become `unavailable`. You will never see a fabricated zero.
+- **Live power flows**: PV, grid (net / import / export), house load, battery power & state of charge, EV charging power (30 s polling by default).
+- **Energy Dashboard ready**: cumulative kWh counters for grid import/export, PV production and battery charge/discharge, integrated from the live measurements and restored across restarts.
+- **Dynamic prices**: the current retail and injection price for *your* tariff, with the full day-ahead curve as attributes (works with ApexCharts cards).
+- **Dispatch plan**: the battery command Novolt is running (idle / force charge / force discharge), the planned battery power with the 24 h schedule as attributes, and the cheap EV-charging hours.
+- **Honest data**: when telemetry or prices are stale or missing, entities become `unavailable`. You will never see a fabricated zero.
 
 Entities adapt to your site: a home without a battery gets no battery entities, PV-only sites get no EV entities, and so on.
 
@@ -38,6 +38,9 @@ Copy `custom_components/novolt/` into your Home Assistant `config/custom_compone
 
 Polling intervals are tunable via the integration's **Configure** button (defaults: 30 s for the live snapshot, 5 min for prices/plan/aggregates).
 
+> [!NOTE]
+> Home Assistant generates entity IDs from the entity names in **your interface language** when the integration is first added. On a Dutch install the price sensor is `sensor.novolt_huidige_prijs`, not `sensor.novolt_current_price`. All examples below use the English IDs; find your actual IDs under **Settings → Devices & services → Novolt → entities** and adjust where needed.
+
 ## Energy Dashboard
 
 Use these entities in **Settings → Dashboards → Energy**:
@@ -50,7 +53,7 @@ Use these entities in **Settings → Dashboards → Energy**:
 | Battery in | `sensor.novolt_battery_charge_energy` |
 | Battery out | `sensor.novolt_battery_discharge_energy` |
 
-These counters integrate the live power readings client-side (trapezoid rule) and only advance while fresh telemetry is flowing — offline gaps are skipped, never bridged.
+These counters integrate the live power readings client-side (trapezoid rule) and only advance while fresh telemetry is flowing. Offline gaps are skipped, never bridged.
 
 ## Dashboard ideas
 
