@@ -52,6 +52,74 @@ Use these entities in **Settings → Dashboards → Energy**:
 
 These counters integrate the live power readings client-side (trapezoid rule) and only advance while fresh telemetry is flowing — offline gaps are skipped, never bridged.
 
+## Dashboard ideas
+
+### Day-ahead price chart
+
+The price sensors carry the full day-ahead curve in their `raw_today` / `raw_tomorrow` attributes, ready for [ApexCharts card](https://github.com/RomRider/apexcharts-card):
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: true
+  title: Electricity price (€/kWh)
+graph_span: 24h
+span:
+  start: day
+now:
+  show: true
+  label: now
+series:
+  - entity: sensor.novolt_current_price
+    name: Import
+    type: column
+    data_generator: |
+      return entity.attributes.raw_today.map((p) => {
+        return [new Date(p.start).getTime(), p.price];
+      });
+  - entity: sensor.novolt_current_injection_price
+    name: Injection
+    type: line
+    curve: stepline
+    data_generator: |
+      return entity.attributes.raw_today.map((p) => {
+        return [new Date(p.start).getTime(), p.price];
+      });
+```
+
+### Live site overview
+
+```yaml
+type: entities
+title: Novolt
+entities:
+  - entity: sensor.novolt_pv_power
+  - entity: sensor.novolt_house_power
+  - entity: sensor.novolt_grid_power
+  - entity: sensor.novolt_battery_power
+  - entity: sensor.novolt_battery
+  - entity: sensor.novolt_ev_power
+  - entity: sensor.novolt_battery_command
+  - entity: binary_sensor.novolt_ev_cheap_hour
+```
+
+### Automation: run the dishwasher in cheap hours
+
+```yaml
+triggers:
+  - trigger: numeric_state
+    entity_id: sensor.novolt_current_price
+    below: 0.10
+conditions:
+  - condition: state
+    entity_id: binary_sensor.novolt_live_data
+    state: "on"
+actions:
+  - action: switch.turn_on
+    target:
+      entity_id: switch.dishwasher
+```
+
 ## Entities
 
 | Entity | Description |
