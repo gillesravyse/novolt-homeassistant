@@ -55,6 +55,27 @@ Use these entities in **Settings → Dashboards → Energy**:
 
 These counters integrate the live power readings client-side (trapezoid rule) and only advance while fresh telemetry is flowing. Offline gaps are skipped, never bridged.
 
+## Bundled dashboard cards
+
+The integration ships five custom Lovelace cards, styled identically to the Novolt app. No extra install and no resource configuration: after adding the integration they simply appear in the card picker (**Add card → search "Novolt"**). Entities are auto-discovered, so an empty config `{}` works in any language:
+
+| Card | What it shows |
+| --- | --- |
+| `custom:novolt-power-flow-card` | The live energy flow between sun, grid, home, battery and EV chargers, with animated flows and the SOC ring |
+| `custom:novolt-battery-card` | State-of-charge ring plus today's charged and discharged energy |
+| `custom:novolt-stats-card` | Stat tiles: current price (with the next cheap hour), sun today, self-sufficiency and injection price |
+| `custom:novolt-price-card` | Day-ahead price columns with the selected cheap charging hours and a now-marker |
+| `custom:novolt-forecast-card` | The 24 h plan: sun and consumption forecast, battery charge/discharge plan and SOC trajectory |
+
+Every card accepts optional overrides when auto-discovery is not what you want:
+
+```yaml
+type: custom:novolt-power-flow-card
+reference_w: 3000
+entities:
+  pv_power: sensor.novolt_pv_vermogen
+```
+
 ## Dashboard ideas
 
 ### Day-ahead price chart
