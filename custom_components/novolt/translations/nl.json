@@ -1,0 +1,85 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Verbinden met Novolt",
+        "description": "Maak een read-only API-sleutel aan in de Novolt-app onder Instellingen → API en plak die hier.",
+        "data": {
+          "api_key": "API-sleutel",
+          "base_url": "API-basis-URL"
+        },
+        "data_description": {
+          "api_key": "Begint met novolt_sk_",
+          "base_url": "Laat de standaardwaarde staan tenzij Novolt-support anders aangeeft."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Opnieuw verbinden met Novolt",
+        "description": "Je API-sleutel is ingetrokken of vervangen. Plak een nieuwe sleutel uit de Novolt-app.",
+        "data": {
+          "api_key": "API-sleutel"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "De API-sleutel is geweigerd. Controleer of je de volledige sleutel hebt gekopieerd.",
+      "cannot_connect": "Kan de Novolt-API niet bereiken. Controleer je internetverbinding.",
+      "unknown": "Onverwachte fout, bekijk de logs."
+    },
+    "abort": {
+      "already_configured": "Deze Novolt-site is al geconfigureerd.",
+      "reauth_successful": "De API-sleutel is bijgewerkt."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Novolt-polling",
+        "data": {
+          "snapshot_interval": "Interval live snapshot (seconden)",
+          "insights_interval": "Interval prijzen/plan (seconden)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "pv_power": { "name": "PV-vermogen" },
+      "grid_power": { "name": "Netvermogen" },
+      "grid_import_power": { "name": "Afname van net" },
+      "grid_export_power": { "name": "Injectie in net" },
+      "house_power": { "name": "Huisverbruik" },
+      "battery_power": { "name": "Batterijvermogen" },
+      "battery_soc": { "name": "Batterij" },
+      "ev_power": { "name": "EV-vermogen" },
+      "price_current": { "name": "Huidige prijs" },
+      "price_injection": { "name": "Huidige injectieprijs" },
+      "pv_energy_total": { "name": "PV-energie" },
+      "grid_import_energy_total": { "name": "Netafname-energie" },
+      "grid_export_energy_total": { "name": "Netinjectie-energie" },
+      "battery_charge_energy_total": { "name": "Batterij laadenergie" },
+      "battery_discharge_energy_total": { "name": "Batterij ontlaadenergie" },
+      "today_pv_energy": { "name": "PV-energie laatste 24u" },
+      "today_grid_import": { "name": "Netafname laatste 24u" },
+      "today_grid_export": { "name": "Netinjectie laatste 24u" },
+      "today_battery_charge": { "name": "Batterij geladen laatste 24u" },
+      "today_battery_discharge": { "name": "Batterij ontladen laatste 24u" },
+      "self_sufficiency": { "name": "Zelfvoorziening" },
+      "battery_command": {
+        "name": "Batterijcommando",
+        "state": {
+          "idle": "Rust",
+          "force_charge": "Geforceerd laden",
+          "force_discharge": "Geforceerd ontladen"
+        }
+      },
+      "battery_plan_power": { "name": "Gepland batterijvermogen" },
+      "ev_next_cheap_start": { "name": "Volgend goedkoop EV-uur" }
+    },
+    "binary_sensor": {
+      "data_live": { "name": "Live data" },
+      "prices_live": { "name": "Live prijzen" },
+      "ev_cheap_now": { "name": "EV goedkoop uur" }
+    }
+  }
+}

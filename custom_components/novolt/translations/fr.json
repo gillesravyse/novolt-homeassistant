@@ -1,0 +1,85 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connexion à Novolt",
+        "description": "Créez une clé API en lecture seule dans l'application Novolt sous Paramètres → API, puis collez-la ici.",
+        "data": {
+          "api_key": "Clé API",
+          "base_url": "URL de base de l'API"
+        },
+        "data_description": {
+          "api_key": "Commence par novolt_sk_",
+          "base_url": "Conservez la valeur par défaut sauf indication contraire du support Novolt."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnexion à Novolt",
+        "description": "Votre clé API a été révoquée ou remplacée. Collez une nouvelle clé depuis l'application Novolt.",
+        "data": {
+          "api_key": "Clé API"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "La clé API a été refusée. Vérifiez que vous avez copié la clé complète.",
+      "cannot_connect": "Impossible de joindre l'API Novolt. Vérifiez votre connexion internet.",
+      "unknown": "Erreur inattendue, consultez les journaux."
+    },
+    "abort": {
+      "already_configured": "Ce site Novolt est déjà configuré.",
+      "reauth_successful": "La clé API a été mise à jour."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Interrogation Novolt",
+        "data": {
+          "snapshot_interval": "Intervalle instantané en direct (secondes)",
+          "insights_interval": "Intervalle prix/plan (secondes)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "pv_power": { "name": "Puissance PV" },
+      "grid_power": { "name": "Puissance réseau" },
+      "grid_import_power": { "name": "Prélèvement réseau" },
+      "grid_export_power": { "name": "Injection réseau" },
+      "house_power": { "name": "Consommation maison" },
+      "battery_power": { "name": "Puissance batterie" },
+      "battery_soc": { "name": "Batterie" },
+      "ev_power": { "name": "Puissance VE" },
+      "price_current": { "name": "Prix actuel" },
+      "price_injection": { "name": "Prix d'injection actuel" },
+      "pv_energy_total": { "name": "Énergie PV" },
+      "grid_import_energy_total": { "name": "Énergie prélevée" },
+      "grid_export_energy_total": { "name": "Énergie injectée" },
+      "battery_charge_energy_total": { "name": "Énergie de charge batterie" },
+      "battery_discharge_energy_total": { "name": "Énergie de décharge batterie" },
+      "today_pv_energy": { "name": "Énergie PV dernières 24 h" },
+      "today_grid_import": { "name": "Prélèvement dernières 24 h" },
+      "today_grid_export": { "name": "Injection dernières 24 h" },
+      "today_battery_charge": { "name": "Charge batterie dernières 24 h" },
+      "today_battery_discharge": { "name": "Décharge batterie dernières 24 h" },
+      "self_sufficiency": { "name": "Autosuffisance" },
+      "battery_command": {
+        "name": "Commande batterie",
+        "state": {
+          "idle": "Repos",
+          "force_charge": "Charge forcée",
+          "force_discharge": "Décharge forcée"
+        }
+      },
+      "battery_plan_power": { "name": "Puissance batterie planifiée" },
+      "ev_next_cheap_start": { "name": "Prochaine heure creuse VE" }
+    },
+    "binary_sensor": {
+      "data_live": { "name": "Données en direct" },
+      "prices_live": { "name": "Prix en direct" },
+      "ev_cheap_now": { "name": "Heure creuse VE" }
+    }
+  }
+}

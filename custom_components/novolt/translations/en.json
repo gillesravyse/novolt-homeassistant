@@ -1,0 +1,85 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Novolt",
+        "description": "Create a read-only API key in the Novolt app under Settings → API, then paste it here.",
+        "data": {
+          "api_key": "API key",
+          "base_url": "API base URL"
+        },
+        "data_description": {
+          "api_key": "Starts with novolt_sk_",
+          "base_url": "Leave the default unless Novolt support told you otherwise."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect to Novolt",
+        "description": "Your API key was revoked or rotated. Paste a new key from the Novolt app.",
+        "data": {
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The API key was rejected. Check that you copied the full key.",
+      "cannot_connect": "Could not reach the Novolt API. Check your internet connection.",
+      "unknown": "Unexpected error — check the logs."
+    },
+    "abort": {
+      "already_configured": "This Novolt site is already configured.",
+      "reauth_successful": "The API key was updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Novolt polling",
+        "data": {
+          "snapshot_interval": "Live snapshot interval (seconds)",
+          "insights_interval": "Prices/plan interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "pv_power": { "name": "PV power" },
+      "grid_power": { "name": "Grid power" },
+      "grid_import_power": { "name": "Grid import power" },
+      "grid_export_power": { "name": "Grid export power" },
+      "house_power": { "name": "House power" },
+      "battery_power": { "name": "Battery power" },
+      "battery_soc": { "name": "Battery" },
+      "ev_power": { "name": "EV power" },
+      "price_current": { "name": "Current price" },
+      "price_injection": { "name": "Current injection price" },
+      "pv_energy_total": { "name": "PV energy" },
+      "grid_import_energy_total": { "name": "Grid import energy" },
+      "grid_export_energy_total": { "name": "Grid export energy" },
+      "battery_charge_energy_total": { "name": "Battery charge energy" },
+      "battery_discharge_energy_total": { "name": "Battery discharge energy" },
+      "today_pv_energy": { "name": "PV energy last 24h" },
+      "today_grid_import": { "name": "Grid import last 24h" },
+      "today_grid_export": { "name": "Grid export last 24h" },
+      "today_battery_charge": { "name": "Battery charge last 24h" },
+      "today_battery_discharge": { "name": "Battery discharge last 24h" },
+      "self_sufficiency": { "name": "Self-sufficiency" },
+      "battery_command": {
+        "name": "Battery command",
+        "state": {
+          "idle": "Idle",
+          "force_charge": "Force charge",
+          "force_discharge": "Force discharge"
+        }
+      },
+      "battery_plan_power": { "name": "Planned battery power" },
+      "ev_next_cheap_start": { "name": "Next cheap EV hour" }
+    },
+    "binary_sensor": {
+      "data_live": { "name": "Live data" },
+      "prices_live": { "name": "Live prices" },
+      "ev_cheap_now": { "name": "EV cheap hour" }
+    }
+  }
+}

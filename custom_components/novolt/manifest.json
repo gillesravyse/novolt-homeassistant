@@ -1,0 +1,12 @@
+{
+  "domain": "novolt",
+  "name": "Novolt",
+  "codeowners": ["@gillesravyse"],
+  "config_flow": true,
+  "documentation": "https://github.com/gillesravyse/novolt-homeassistant",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/gillesravyse/novolt-homeassistant/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
