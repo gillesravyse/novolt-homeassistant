@@ -21,6 +21,8 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # The brands PR (logo in home-assistant/brands) is phase 2.
+          ignore: brands
 
   tests:
     runs-on: ubuntu-latest
