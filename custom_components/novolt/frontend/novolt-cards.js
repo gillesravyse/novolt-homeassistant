@@ -39,7 +39,8 @@
   `;
 
   const BASE_CSS = `
-    :host { display: block; ${TOKENS} }
+    :host { display: block; height: 100%; ${TOKENS} }
+    *, *::before, *::after { box-sizing: border-box; }
     .nv-card {
       background: var(--nv-surface);
       border: 1px solid var(--nv-border);
@@ -47,9 +48,9 @@
       padding: 16px 20px 20px;
       color: var(--nv-ink);
       font-family: var(--ha-card-font-family, var(--paper-font-body1_-_font-family, system-ui, sans-serif));
-      box-sizing: border-box;
+      height: 100%;
     }
-    .nv-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+    .nv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px 14px; flex-wrap: wrap; margin-bottom: 8px; }
     .nv-title { font-size: 15px; font-weight: 600; color: var(--nv-ink); }
     .nv-sub { font-size: 12px; color: var(--nv-ink-muted); margin-top: 2px; }
     .nv-right { font-size: 12px; color: var(--nv-ink-faint); font-variant-numeric: tabular-nums; }
@@ -177,6 +178,18 @@
     const v = Number(s.state);
     return Number.isFinite(v) ? v : null;
   }
+  function wireMoreInfo(card) {
+    card.shadowRoot.querySelectorAll("[data-entity]").forEach((el) => {
+      const entityId = el.getAttribute("data-entity");
+      if (!entityId) return;
+      el.addEventListener("click", () =>
+        card.dispatchEvent(
+          new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true })
+        )
+      );
+    });
+  }
+
   function attrs(hass, id) {
     const s = id ? hass.states[id] : undefined;
     return (s && s.attributes) || {};
@@ -269,14 +282,19 @@
 
   class NovoltPowerFlowCard extends NovoltBaseCard {
     static cardSize = 6;
+    getGridOptions() {
+      return { columns: 12, rows: 8, min_columns: 6, min_rows: 5 };
+    }
     static css = `
       .flow-wrap { position: relative; margin: 0 auto; max-width: 560px; }
       svg.flow { width: 100%; overflow: visible; }
       .node-box {
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         border-radius: 999px; background: var(--nv-surface);
-        transition: border-color .3s, box-shadow .3s;
+        transition: border-color .3s, box-shadow .3s, transform .3s;
+        cursor: pointer;
       }
+      .node-box:hover { transform: scale(1.05); }
       .node-box .icon { width: 22px; height: 22px; }
       .node-box .val { font-size: 12.5px; font-weight: 700; margin-top: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
       .node-box .dir { font-size: 9px; font-weight: 600; letter-spacing: .06em; color: var(--nv-ink-muted); }
@@ -336,31 +354,32 @@
       );
 
       const nodes = [];
+      const ent = (key) => pickEntity(this, key);
       nodes.push({
-        slot: "grid", kind: "grid", label: tr(hass, "grid"),
+        slot: "grid", kind: "grid", label: tr(hass, "grid"), entity: ent("grid_power"),
         value: v.grid == null ? DASH : fmtPowerStr(hass, Math.abs(gridNet) > TOL ? Math.abs(gridNet) : 0),
         sub: gridImporting ? tr(hass, "import") : gridExporting ? tr(hass, "export") : "",
         active: gridImporting || gridExporting,
       });
       nodes.push({
-        slot: "home", kind: "house", label: tr(hass, "home"),
+        slot: "home", kind: "house", label: tr(hass, "home"), entity: ent("house_power"),
         value: v.house == null ? DASH : fmtPowerStr(hass, house),
         sub: "", active: house > TOL,
       });
       if (v.hasSolar)
         nodes.push({
-          slot: "solar", kind: "solar", label: tr(hass, "solar"),
+          slot: "solar", kind: "solar", label: tr(hass, "solar"), entity: ent("pv_power"),
           value: v.pv == null ? DASH : fmtPowerStr(hass, pv), sub: "", active: pv > TOL,
         });
       if (v.hasBattery)
         nodes.push({
-          slot: "battery", kind: "battery", label: tr(hass, "battery"),
+          slot: "battery", kind: "battery", label: tr(hass, "battery"), entity: ent("battery_power"),
           value: v.batt == null ? DASH : fmtPowerStr(hass, battCharging || battDischarging ? Math.abs(batt) : 0),
           sub: battCharging ? tr(hass, "charging") : battDischarging ? tr(hass, "discharging") : "",
           soc: v.soc, active: battCharging || battDischarging,
         });
-      if (ev1) nodes.push({ slot: "ev1", kind: "ev", label: ev1.name, value: fmtPowerStr(hass, ev1.w), sub: "", active: ev1.w > 5 });
-      if (ev2) nodes.push({ slot: "ev2", kind: "ev", label: ev2.name, value: fmtPowerStr(hass, ev2.w), sub: "", active: ev2.w > 5 });
+      if (ev1) nodes.push({ slot: "ev1", kind: "ev", label: ev1.name, value: fmtPowerStr(hass, ev1.w), sub: "", active: ev1.w > 5, entity: ent("ev_power") });
+      if (ev2) nodes.push({ slot: "ev2", kind: "ev", label: ev2.name, value: fmtPowerStr(hass, ev2.w), sub: "", active: ev2.w > 5, entity: ent("ev_power") });
 
       const socArc = v.hasBattery && v.soc != null ? this._socArc(v.soc) : "";
 
@@ -420,7 +439,7 @@
         <text x="${lx}" y="${ly}" text-anchor="${anchor}" fill="var(--nv-ink-muted)" font-size="14" font-weight="500">${n.label}</text>
         ${socLabel}
         <foreignObject x="${x - r}" y="${y - r}" width="${r * 2}" height="${r * 2}" style="overflow:visible">
-          <div xmlns="http://www.w3.org/1999/xhtml" class="node-box" style="width:${r * 2}px;height:${r * 2}px;color:${color};border:${n.active ? 2.5 : 2}px solid ${n.active ? color : "var(--nv-border)"};${glow}">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="node-box" data-entity="${n.entity || ""}" style="width:${r * 2}px;height:${r * 2}px;color:${color};border:${n.active ? 2.5 : 2}px solid ${n.active ? color : "var(--nv-border)"};${glow}">
             <span class="icon">${ICONS[KIND_ICON[n.kind]]}</span>
             <span class="val" style="color:${color}">${n.value}</span>
             ${n.sub ? `<span class="dir">${n.sub}</span>` : ""}
@@ -430,6 +449,7 @@
 
     _afterRender() {
       this._syncClock();
+      wireMoreInfo(this);
     }
     connectedCallback() {
       this._phase = this._phase || {};
@@ -473,15 +493,21 @@
 
   class NovoltBatteryCard extends NovoltBaseCard {
     static cardSize = 5;
+    getGridOptions() {
+      return { columns: 6, rows: 7, min_columns: 3, min_rows: 5 };
+    }
+    _afterRender() {
+      wireMoreInfo(this);
+    }
     static css = `
       .ring-wrap { display: flex; flex-direction: column; align-items: center; padding: 28px 0 8px; }
-      .ring { position: relative; width: 190px; height: 190px; }
+      .ring { position: relative; width: 190px; height: 190px; cursor: pointer; }
       .ring svg { width: 100%; height: 100%; }
       .ring .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
       .ring .pct { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; }
       .ring .cap { font-size: 13px; color: var(--nv-ink-muted); margin-top: 2px; }
       .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 26px; width: 100%; }
-      .tile { background: var(--nv-surface-2); border-radius: 10px; padding: 12px; text-align: center; }
+      .tile { background: var(--nv-surface-2); border-radius: 10px; padding: 12px; text-align: center; cursor: pointer; }
       .tile .lbl { font-size: 12px; color: var(--nv-ink-faint); }
       .tile .val { font-size: 16px; font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; }
     `;
@@ -503,7 +529,7 @@
         <div class="nv-card">
           <div class="nv-head"><div class="nv-title">${tr(hass, "batteryTitle")}</div></div>
           <div class="ring-wrap">
-            <div class="ring">
+            <div class="ring" data-entity="${pickEntity(this, "battery_soc") || ""}">
               <svg viewBox="0 0 190 190">
                 <circle cx="95" cy="95" r="${r}" fill="none" stroke="var(--nv-border)" stroke-width="9" opacity="0.5"/>
                 <circle cx="95" cy="95" r="${r}" fill="none" stroke="var(--nv-battery)" stroke-width="9"
@@ -517,9 +543,9 @@
               </div>
             </div>
             <div class="tiles">
-              <div class="tile"><div class="lbl">${tr(hass, "chargedToday")}</div>
+              <div class="tile" data-entity="${pickEntity(this, "today_battery_charge") || ""}"><div class="lbl">${tr(hass, "chargedToday")}</div>
                 <div class="val" style="color:var(--nv-battery)">${v.charged == null ? DASH : fmtKwh(hass, v.charged) + " kWh"}</div></div>
-              <div class="tile"><div class="lbl">${tr(hass, "discharged")}</div>
+              <div class="tile" data-entity="${pickEntity(this, "today_battery_discharge") || ""}"><div class="lbl">${tr(hass, "discharged")}</div>
                 <div class="val" style="color:var(--nv-export)">${v.discharged == null ? DASH : fmtKwh(hass, v.discharged) + " kWh"}</div></div>
             </div>
           </div>
@@ -531,10 +557,18 @@
 
   class NovoltStatsCard extends NovoltBaseCard {
     static cardSize = 2;
+    getGridOptions() {
+      return { columns: 12, rows: "auto", min_columns: 6 };
+    }
+    _afterRender() {
+      wireMoreInfo(this);
+    }
     static css = `
       :host { --nv-tile-min: 150px; }
       .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--nv-tile-min), 1fr)); gap: 12px; }
       .stat { background: var(--nv-surface); border: 1px solid var(--nv-border); border-radius: 12px; padding: 14px 16px; }
+      .stat[data-entity]:not([data-entity=""]) { cursor: pointer; transition: border-color .2s; }
+      .stat[data-entity]:not([data-entity=""]):hover { border-color: var(--nv-border-strong); }
       .stat .top { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--nv-ink-muted); }
       .stat .top .ic { width: 15px; height: 15px; display: inline-flex; }
       .stat .val { margin-top: 8px; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -565,8 +599,8 @@
     _render(v) {
       const hass = this._hass;
       if (!v.found) return this._missing(hass);
-      const tile = (icon, color, label, val, unit, sub) => `
-        <div class="stat">
+      const tile = (icon, color, label, val, unit, sub, entity) => `
+        <div class="stat" data-entity="${entity || ""}">
           <div class="top"><span class="ic" style="color:${color}">${icon}</span>${label}</div>
           <div class="val">${val}${unit ? `<small>${unit}</small>` : ""}</div>
           <div class="sub">${sub || ""}</div>
@@ -574,14 +608,18 @@
       return `
         <div class="nv-card"><div class="grid">
           ${tile(ICONS.euro, "var(--nv-grid)", tr(hass, "priceNow"),
-            v.price == null ? DASH : fmtEur(hass, v.price) + " €", v.price == null ? "" : "/kWh", v.cheapSub)}
+            v.price == null ? DASH : fmtEur(hass, v.price) + " €", v.price == null ? "" : "/kWh", v.cheapSub,
+            pickEntity(this, "price_current"))}
           ${tile(ICONS.solar, "var(--nv-solar)", tr(hass, "sunToday"),
-            v.pvToday == null ? DASH : fmtKwh(hass, v.pvToday), v.pvToday == null ? "" : "kWh", "")}
+            v.pvToday == null ? DASH : fmtKwh(hass, v.pvToday), v.pvToday == null ? "" : "kWh", "",
+            pickEntity(this, "today_pv_energy"))}
           ${tile(ICONS.leaf, "var(--nv-battery)", tr(hass, "selfSuff"),
-            v.selfSuff == null ? DASH : Math.round(v.selfSuff) + "%", "", v.selfSuff == null ? "" : tr(hass, "selfSuffSub"))}
-          ${tile(ICONS.trend, "var(--nv-battery)", tr(hass, "savedToday"), DASH, "", "")}
+            v.selfSuff == null ? DASH : Math.round(v.selfSuff) + "%", "", v.selfSuff == null ? "" : tr(hass, "selfSuffSub"),
+            pickEntity(this, "self_sufficiency"))}
+          ${tile(ICONS.trend, "var(--nv-battery)", tr(hass, "savedToday"), DASH, "", "", "")}
           ${tile(ICONS.zap, "var(--nv-export)", tr(hass, "injectionNow"),
-            v.injection == null ? DASH : fmtEur(hass, v.injection) + " €", v.injection == null ? "" : "/kWh", "")}
+            v.injection == null ? DASH : fmtEur(hass, v.injection) + " €", v.injection == null ? "" : "/kWh", "",
+            pickEntity(this, "price_injection"))}
         </div></div>`;
     }
   }
@@ -590,10 +628,22 @@
 
   class NovoltPriceCard extends NovoltBaseCard {
     static cardSize = 4;
+    getGridOptions() {
+      return { columns: 12, rows: 5, min_columns: 6, min_rows: 4 };
+    }
     static css = `
       .bars { display: flex; align-items: flex-end; gap: 3px; height: 130px; margin-top: 14px; }
-      .barcol { flex: 1; display: flex; align-items: flex-end; height: 100%; }
+      .barcol { flex: 1; display: flex; align-items: flex-end; height: 100%; position: relative; }
       .bar { width: 100%; border-radius: 3px 3px 0 0; transition: height .3s, background .3s; }
+      .bar-tip {
+        display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
+        transform: translateX(-50%); background: var(--nv-surface-2);
+        border: 1px solid var(--nv-border); border-radius: 6px; padding: 3px 8px;
+        font-size: 11px; white-space: nowrap; z-index: 3; pointer-events: none;
+        font-variant-numeric: tabular-nums;
+      }
+      .barcol:hover .bar-tip { display: block; }
+      .barcol:hover .bar { filter: brightness(1.2); }
       .hours { display: flex; justify-content: space-between; font-size: 11px; color: var(--nv-ink-faint); margin-top: 8px; }
     `;
     _view(hass) {
@@ -630,7 +680,8 @@
           : p.price > 0.28
             ? "var(--nv-grid)"
             : "var(--nv-surface-3)";
-        return `<div class="barcol"><div class="bar" style="height:${pct}%;background:${color};${isNow ? "outline:1.5px solid var(--nv-solar);outline-offset:1px;" : ""}"></div></div>`;
+        const hourLbl = tr(hass, "hour", { h: String(h).padStart(2, "0") });
+        return `<div class="barcol"><div class="bar-tip"><b>${hourLbl}</b> · ${fmtEur(hass, p.price)} €</div><div class="bar" style="height:${pct}%;background:${color};${isNow ? "outline:1.5px solid var(--nv-solar);outline-offset:1px;" : ""}"></div></div>`;
       }).join("");
       const hourMark = (h) => tr(hass, "hour", { h });
       return `
@@ -653,11 +704,38 @@
 
   class NovoltForecastCard extends NovoltBaseCard {
     static cardSize = 5;
+    getGridOptions() {
+      return { columns: 12, rows: 6, min_columns: 6, min_rows: 4 };
+    }
     static css = `
-      .chart { margin-top: 10px; }
+      .nv-card { display: flex; flex-direction: column; }
+      .chart { margin-top: 10px; position: relative; flex: 1; min-height: 0; }
       .chart svg { width: 100%; height: auto; display: block; overflow: visible; }
       .axis { font-size: 11px; fill: var(--nv-ink-faint); font-variant-numeric: tabular-nums; }
+      .fc-line { display: none; position: absolute; top: 0; width: 1px; background: var(--nv-border-strong); pointer-events: none; }
+      .fc-tip {
+        display: none; position: absolute; background: var(--nv-surface-2);
+        border: 1px solid var(--nv-border); border-radius: 6px; padding: 6px 10px;
+        font-size: 11px; z-index: 3; pointer-events: none; min-width: 132px;
+      }
+      .fc-tip .t { font-weight: 600; color: var(--nv-ink); margin-bottom: 3px; }
+      .fc-tip .row { display: flex; justify-content: space-between; gap: 12px; color: var(--nv-ink-muted); }
+      .fc-tip .row b { color: var(--nv-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
     `;
+    connectedCallback() {
+      this._ro = new ResizeObserver(() => {
+        const w = Math.round(this.getBoundingClientRect().width / 20) * 20;
+        if (w && w !== this._wb) {
+          this._wb = w;
+          this._sig = null;
+          this._update();
+        }
+      });
+      this._ro.observe(this);
+    }
+    disconnectedCallback() {
+      if (this._ro) this._ro.disconnect();
+    }
     _view(hass) {
       const planAttrs = attrs(hass, pickEntity(this, "battery_plan_power"));
       const schedule = (planAttrs.schedule || []).map((s) => ({
@@ -690,11 +768,65 @@
         </div>`;
       if (v.schedule.length < 2)
         return `<div class="nv-card">${head}<div class="nv-missing">${DASH}</div></div>`;
-      return `<div class="nv-card">${head}<div class="chart">${this._chart(v.schedule)}</div></div>`;
+      return `<div class="nv-card">${head}<div class="chart">${this._chart(v.schedule)}<div class="fc-line"></div><div class="fc-tip"></div></div></div>`;
+    }
+
+    _afterRender() {
+      const chart = this.shadowRoot.querySelector(".chart");
+      const svg = chart && chart.querySelector("svg");
+      const line = this.shadowRoot.querySelector(".fc-line");
+      const tip = this.shadowRoot.querySelector(".fc-tip");
+      if (!chart || !svg || !line || !tip || !this._slots || this._slots.length < 2) return;
+      const kw = (w) =>
+        (w / 1000).toLocaleString(numLocale(this._hass), {
+          minimumFractionDigits: 1, maximumFractionDigits: 1,
+        }) + " kW";
+      chart.addEventListener("pointermove", (ev) => {
+        const m = this._metrics;
+        const slots = this._slots;
+        const rect = svg.getBoundingClientRect();
+        if (!m || !rect.width) return;
+        const scale = rect.width / m.W;
+        const vx = (ev.clientX - rect.left) / scale;
+        let idx = Math.round(((vx - m.padL) / m.iw) * (slots.length - 1));
+        idx = Math.max(0, Math.min(slots.length - 1, idx));
+        const slot = slots[idx];
+        const px = (m.padL + (idx / (slots.length - 1)) * m.iw) * scale;
+        line.style.display = "block";
+        line.style.left = `${px.toFixed(1)}px`;
+        line.style.height = `${rect.height}px`;
+        const rows = [
+          [tr(this._hass, "legSolar"), "var(--nv-solar)", kw(slot.pv)],
+          [tr(this._hass, "legLoad"), "var(--nv-load)", kw(slot.load)],
+        ];
+        if (m.hasBattery) {
+          rows.push([tr(this._hass, "legCharge"), "var(--nv-battery)", kw(slot.charge)]);
+          rows.push([tr(this._hass, "legDischarge"), "var(--nv-export)", kw(slot.discharge)]);
+          if (slot.soc != null) rows.push(["SOC", "var(--nv-ink-muted)", `${Math.round(slot.soc)}%`]);
+        }
+        const time = new Date(slot.t).toLocaleTimeString(numLocale(this._hass), {
+          hour: "2-digit", minute: "2-digit", hour12: false,
+        });
+        tip.innerHTML =
+          `<div class="t">${time}</div>` +
+          rows.map(([label, color, value]) =>
+            `<div class="row"><span><span class="nv-dot" style="background:${color};margin-right:5px"></span>${label}</span><b>${value}</b></div>`
+          ).join("");
+        tip.style.display = "block";
+        let left = px + 12;
+        if (left + tip.offsetWidth > rect.width) left = px - tip.offsetWidth - 12;
+        tip.style.left = `${Math.max(0, left).toFixed(1)}px`;
+        tip.style.top = "6px";
+      });
+      chart.addEventListener("pointerleave", () => {
+        line.style.display = "none";
+        tip.style.display = "none";
+      });
     }
 
     _chart(slots) {
-      const W = 900, H = 260, padL = 38, padB = 22, padT = 8;
+      const W = Math.max(this._wb || 640, 340), H = 240, padL = 38, padB = 22, padT = 8;
+      this._slots = slots;
       const iw = W - padL - 8, ih = H - padT - padB;
       const maxW = Math.max(...slots.map((s) => Math.max(s.pv, s.load, s.charge, s.discharge)), 1000);
       const yMax = Math.ceil(maxW / 2000) * 2000;
@@ -741,9 +873,10 @@
         .filter((_, idx) => idx % 4 === 0);
 
       const hasBattery = slots.some((s) => s.soc != null || s.charge > 1 || s.discharge > 1);
+      this._metrics = { W, H, padL, padT, ih, iw, hasBattery };
 
       return `
-        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="aspect-ratio:${W}/${H}">
+        <svg viewBox="0 0 ${W} ${H}">
           <defs>
             <linearGradient id="nvPv" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stop-color="var(--nv-solar)" stop-opacity="0.35"/>
