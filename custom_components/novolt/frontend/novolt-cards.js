@@ -286,8 +286,9 @@
       return { columns: 12, rows: 8, min_columns: 6, min_rows: 5 };
     }
     static css = `
-      .flow-wrap { position: relative; margin: 0 auto; max-width: 560px; }
-      svg.flow { width: 100%; overflow: visible; }
+      .nv-card { display: flex; flex-direction: column; }
+      .flow-wrap { position: relative; flex: 1; min-height: 0; display: flex; justify-content: center; }
+      svg.flow { width: 100%; height: 100%; overflow: visible; }
       .node-box {
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         border-radius: 999px; background: var(--nv-surface);
@@ -500,16 +501,17 @@
       wireMoreInfo(this);
     }
     static css = `
-      .ring-wrap { display: flex; flex-direction: column; align-items: center; padding: 28px 0 8px; }
-      .ring { position: relative; width: 190px; height: 190px; cursor: pointer; }
-      .ring svg { width: 100%; height: 100%; }
+      .nv-card { display: flex; flex-direction: column; container-type: inline-size; }
+      .ring-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px 0 4px; }
+      .ring { position: relative; width: clamp(110px, 52cqw, 230px); aspect-ratio: 1; cursor: pointer; container-type: inline-size; }
+      .ring svg { width: 100%; height: 100%; display: block; }
       .ring .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-      .ring .pct { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; }
-      .ring .cap { font-size: 13px; color: var(--nv-ink-muted); margin-top: 2px; }
-      .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 26px; width: 100%; }
-      .tile { background: var(--nv-surface-2); border-radius: 10px; padding: 12px; text-align: center; cursor: pointer; }
-      .tile .lbl { font-size: 12px; color: var(--nv-ink-faint); }
-      .tile .val { font-size: 16px; font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; }
+      .ring .pct { font-size: 21cqw; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .ring .cap { font-size: 7cqw; color: var(--nv-ink-muted); margin-top: 2px; }
+      .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 10px; margin-top: clamp(10px, 5cqw, 24px); width: 100%; }
+      .tile { background: var(--nv-surface-2); border-radius: 10px; padding: clamp(8px, 3cqw, 12px); text-align: center; cursor: pointer; }
+      .tile .lbl { font-size: clamp(10px, 3.4cqw, 12px); color: var(--nv-ink-faint); }
+      .tile .val { font-size: clamp(13px, 4.4cqw, 16px); font-weight: 600; margin-top: 3px; font-variant-numeric: tabular-nums; white-space: nowrap; }
     `;
     _view(hass) {
       return {
@@ -632,7 +634,8 @@
       return { columns: 12, rows: 5, min_columns: 6, min_rows: 4 };
     }
     static css = `
-      .bars { display: flex; align-items: flex-end; gap: 3px; height: 130px; margin-top: 14px; }
+      .nv-card { display: flex; flex-direction: column; }
+      .bars { display: flex; align-items: flex-end; gap: 3px; flex: 1; min-height: 110px; margin-top: 14px; }
       .barcol { flex: 1; display: flex; align-items: flex-end; height: 100%; position: relative; }
       .bar { width: 100%; border-radius: 3px 3px 0 0; transition: height .3s, background .3s; }
       .bar-tip {
@@ -724,9 +727,12 @@
     `;
     connectedCallback() {
       this._ro = new ResizeObserver(() => {
-        const w = Math.round(this.getBoundingClientRect().width / 20) * 20;
-        if (w && w !== this._wb) {
+        const rect = this.getBoundingClientRect();
+        const w = Math.round(rect.width / 20) * 20;
+        const h = Math.round(rect.height / 20) * 20;
+        if ((w && w !== this._wb) || (h && h !== this._hb)) {
           this._wb = w;
+          this._hb = h;
           this._sig = null;
           this._update();
         }
@@ -825,7 +831,10 @@
     }
 
     _chart(slots) {
-      const W = Math.max(this._wb || 640, 340), H = 240, padL = 38, padB = 22, padT = 8;
+      const W = Math.max(this._wb || 640, 340), padL = 38, padB = 22, padT = 8;
+      // Height follows the tile too: whatever the host offers minus the header,
+      // clamped so tiny/huge tiles stay readable.
+      const H = Math.max(170, Math.min(430, (this._hb || 330) - 96));
       this._slots = slots;
       const iw = W - padL - 8, ih = H - padT - padB;
       const maxW = Math.max(...slots.map((s) => Math.max(s.pv, s.load, s.charge, s.discharge)), 1000);
@@ -868,9 +877,12 @@
 
       const yTicks = [];
       for (let v2 = 0; v2 <= yMax; v2 += 2000) yTicks.push(v2);
+      // Label roughly six ticks whatever the horizon length is; a short
+      // horizon (evening, day-ahead not published yet) labels every slot.
+      const every = Math.max(1, Math.round(slots.length / 6));
       const xLabels = slots
         .map((s, i) => ({ i, label: new Date(s.t).toLocaleTimeString(numLocale(this._hass), { hour: "2-digit", minute: "2-digit", hour12: false }) }))
-        .filter((_, idx) => idx % 4 === 0);
+        .filter((_, idx) => idx % every === 0);
 
       const hasBattery = slots.some((s) => s.soc != null || s.charge > 1 || s.discharge > 1);
       this._metrics = { W, H, padL, padT, ih, iw, hasBattery };
