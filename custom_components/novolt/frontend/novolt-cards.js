@@ -784,10 +784,38 @@
     ["novolt-forecast-card", NovoltForecastCard, "Novolt Forecast", "24h forecast: sun, consumption, battery plan and state of charge."],
   ];
   window.customCards = window.customCards || [];
-  for (const [tag, cls, name, description] of CARDS) {
-    if (!customElements.get(tag)) customElements.define(tag, cls);
+  for (const [tag, , name, description] of CARDS) {
     if (!window.customCards.some((c) => c.type === tag))
       window.customCards.push({ type: tag, name, description, preview: true });
   }
-  console.info("%c NOVOLT-CARDS %c loaded ", "background:#e8b54a;color:#111;font-weight:700", "background:#222;color:#e8b54a");
+
+  const defineAll = () => {
+    for (const [tag, cls] of CARDS) {
+      if (!customElements.get(tag)) {
+        try {
+          customElements.define(tag, cls);
+        } catch (err) {
+          console.warn(`novolt-cards: could not define ${tag}`, err);
+        }
+      }
+    }
+    console.info("%c NOVOLT-CARDS %c ready ", "background:#e8b54a;color:#111;font-weight:700", "background:#222;color:#e8b54a");
+  };
+
+  // Loaded via the integration's extra_module_url this script runs BEFORE the
+  // frontend installs its scoped custom-element registry polyfill. Elements
+  // defined that early land in the native registry only, and Home Assistant's
+  // later customElements.get() lookups cannot see them ("Custom element not
+  // found"). So: wait until the app shell itself is defined (which happens
+  // after the polyfill), then register. Poll instead of whenDefined() so it
+  // works both with and without the polyfill, with a timeout safety net.
+  const started = Date.now();
+  const waitForHa = () => {
+    if (customElements.get("home-assistant") || Date.now() - started > 30000) {
+      defineAll();
+      return;
+    }
+    setTimeout(waitForHa, 50);
+  };
+  waitForHa();
 })();
