@@ -79,6 +79,8 @@
       forecastTitle: "Next 24 hours forecast", forecastSub: "Sun, consumption, battery plan and state of charge",
       legSolar: "Sun", legLoad: "Consumption", legCharge: "Charging", legDischarge: "Discharging",
       now: "now", missing: "Novolt entities not found. Install and configure the Novolt integration, or set entities in the card config.",
+      optColumns: "Width (columns of 12)", optRows: "Height (rows)", optReference: "Reference power (W, flow speed)",
+      optHint: "Size applies to sections dashboards; drag the sliders and save.",
     },
     nl: {
       flowTitle: "Energiestroom", live: "Live", solar: "Zon", grid: "Net",
@@ -93,6 +95,8 @@
       forecastTitle: "Voorspelling komende 24 uur", forecastSub: "Zon, verbruik, batterijplan en laadtoestand",
       legSolar: "Zon", legLoad: "Verbruik", legCharge: "Laden", legDischarge: "Ontladen",
       now: "nu", missing: "Geen Novolt-entiteiten gevonden. Installeer en configureer de Novolt-integratie, of geef entiteiten op in de kaartconfiguratie.",
+      optColumns: "Breedte (kolommen van 12)", optRows: "Hoogte (rijen)", optReference: "Referentievermogen (W, stroomsnelheid)",
+      optHint: "Formaat geldt voor secties-dashboards; sleep de sliders en sla op.",
     },
     fr: {
       flowTitle: "Flux d'énergie", live: "En direct", solar: "Soleil", grid: "Réseau",
@@ -107,6 +111,8 @@
       forecastTitle: "Prévision 24 heures", forecastSub: "Soleil, consommation, plan batterie et charge",
       legSolar: "Soleil", legLoad: "Conso", legCharge: "Charge", legDischarge: "Décharge",
       now: "mnt", missing: "Entités Novolt introuvables. Installez l'intégration Novolt ou renseignez les entités dans la configuration de la carte.",
+      optColumns: "Largeur (colonnes sur 12)", optRows: "Hauteur (rangées)", optReference: "Puissance de référence (W)",
+      optHint: "La taille s'applique aux tableaux de bord en sections.",
     },
   };
   const lang = (hass) => {
@@ -248,6 +254,76 @@
     }
   }
 
+  /* ── visual config editor: size sliders (writes sections grid_options) ── */
+  class NovoltCardEditor extends HTMLElement {
+    setConfig(config) {
+      this._config = config || {};
+      this._render();
+    }
+    set hass(hass) {
+      this._hass = hass;
+      this._render();
+    }
+    set cardDefaults(defaults) {
+      this._defaults = defaults || {};
+      this._render();
+    }
+    connectedCallback() {
+      this._render();
+    }
+    _render() {
+      if (!this._hass || !this._config || !this._defaults) return;
+      if (!this._form) {
+        const hint = document.createElement("p");
+        hint.style.cssText = "font-size:12px;color:var(--secondary-text-color);margin:0 0 8px";
+        hint.textContent = tr(this._hass, "optHint");
+        this.appendChild(hint);
+        this._form = document.createElement("ha-form");
+        this._form.addEventListener("value-changed", (ev) => {
+          ev.stopPropagation();
+          const value = ev.detail.value || {};
+          const config = { ...this._config };
+          config.grid_options = {
+            ...(config.grid_options || {}),
+            columns: value.columns,
+            rows: value.rows,
+          };
+          for (const key of (this._defaults.extraKeys || [])) {
+            if (value[key] != null && value[key] !== "") config[key] = value[key];
+            else delete config[key];
+          }
+          this._config = config;
+          this.dispatchEvent(
+            new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true })
+          );
+        });
+        this.appendChild(this._form);
+      }
+      const d = this._defaults;
+      const go = this._config.grid_options || {};
+      this._form.hass = this._hass;
+      this._form.schema = [
+        { name: "columns", selector: { number: { min: 1, max: 12, step: 1, mode: "slider" } } },
+        { name: "rows", selector: { number: { min: 2, max: 16, step: 1, mode: "slider" } } },
+        ...(d.extras || []),
+      ];
+      this._form.data = {
+        columns: go.columns === "full" ? 12 : go.columns ?? d.columns ?? 12,
+        rows: go.rows ?? d.rows ?? 4,
+        ...(d.extraData ? d.extraData(this._config) : {}),
+      };
+      this._form.computeLabel = (field) =>
+        ({ columns: tr(this._hass, "optColumns"), rows: tr(this._hass, "optRows") })[field.name] ||
+        (d.labels && d.labels(this._hass, field.name)) || field.name;
+    }
+  }
+
+  const sizeEditor = (defaults) => {
+    const el = document.createElement("novolt-card-editor");
+    el.cardDefaults = defaults;
+    return el;
+  };
+
   /* ═══════════════════════════ 1. power flow ═════════════════════════════ */
 
   const VB = { w: 600, h: 570 };
@@ -284,6 +360,15 @@
     static cardSize = 6;
     getGridOptions() {
       return { columns: 12, rows: 8, min_columns: 6, min_rows: 5 };
+    }
+    static getConfigElement() {
+      return sizeEditor({
+        columns: 12, rows: 8,
+        extras: [{ name: "reference_w", selector: { number: { min: 500, max: 20000, step: 100, mode: "box", unit_of_measurement: "W" } } }],
+        extraKeys: ["reference_w"],
+        extraData: (config) => ({ reference_w: config.reference_w ?? 2000 }),
+        labels: (hass, name) => (name === "reference_w" ? tr(hass, "optReference") : null),
+      });
     }
     static css = `
       .nv-card { display: flex; flex-direction: column; }
@@ -497,6 +582,9 @@
     getGridOptions() {
       return { columns: 6, rows: 7, min_columns: 3, min_rows: 5 };
     }
+    static getConfigElement() {
+      return sizeEditor({ columns: 6, rows: 7 });
+    }
     _afterRender() {
       wireMoreInfo(this);
     }
@@ -561,6 +649,9 @@
     static cardSize = 2;
     getGridOptions() {
       return { columns: 12, rows: "auto", min_columns: 6 };
+    }
+    static getConfigElement() {
+      return sizeEditor({ columns: 12, rows: 3 });
     }
     _afterRender() {
       wireMoreInfo(this);
@@ -632,6 +723,9 @@
     static cardSize = 4;
     getGridOptions() {
       return { columns: 12, rows: 5, min_columns: 6, min_rows: 4 };
+    }
+    static getConfigElement() {
+      return sizeEditor({ columns: 12, rows: 5 });
     }
     static css = `
       .nv-card { display: flex; flex-direction: column; }
@@ -709,6 +803,9 @@
     static cardSize = 5;
     getGridOptions() {
       return { columns: 12, rows: 6, min_columns: 6, min_rows: 4 };
+    }
+    static getConfigElement() {
+      return sizeEditor({ columns: 12, rows: 6 });
     }
     static css = `
       .nv-card { display: flex; flex-direction: column; }
@@ -935,6 +1032,13 @@
   }
 
   const defineAll = () => {
+    if (!customElements.get("novolt-card-editor")) {
+      try {
+        customElements.define("novolt-card-editor", NovoltCardEditor);
+      } catch (err) {
+        console.warn("novolt-cards: could not define editor", err);
+      }
+    }
     for (const [tag, cls] of CARDS) {
       if (!customElements.get(tag)) {
         try {
