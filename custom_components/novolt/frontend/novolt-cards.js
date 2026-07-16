@@ -79,7 +79,7 @@
       forecastTitle: "Next 24 hours forecast", forecastSub: "Sun, consumption, battery plan and state of charge",
       legSolar: "Sun", legLoad: "Consumption", legCharge: "Charging", legDischarge: "Discharging",
       now: "now", missing: "Novolt entities not found. Install and configure the Novolt integration, or set entities in the card config.",
-      optColumns: "Width (columns of 12)", optRows: "Height (rows)", optReference: "Reference power (W, flow speed)",
+      optFull: "Full width (entire section)", optColumns: "Width (columns, when not full width)", optRows: "Height (rows)", optReference: "Reference power (W, flow speed)",
       optHint: "Size applies to sections dashboards; drag the sliders and save.",
     },
     nl: {
@@ -95,7 +95,7 @@
       forecastTitle: "Voorspelling komende 24 uur", forecastSub: "Zon, verbruik, batterijplan en laadtoestand",
       legSolar: "Zon", legLoad: "Verbruik", legCharge: "Laden", legDischarge: "Ontladen",
       now: "nu", missing: "Geen Novolt-entiteiten gevonden. Installeer en configureer de Novolt-integratie, of geef entiteiten op in de kaartconfiguratie.",
-      optColumns: "Breedte (kolommen van 12)", optRows: "Hoogte (rijen)", optReference: "Referentievermogen (W, stroomsnelheid)",
+      optFull: "Volledige breedte (hele sectie)", optColumns: "Breedte (kolommen, als niet op volledige breedte)", optRows: "Hoogte (rijen)", optReference: "Referentievermogen (W, stroomsnelheid)",
       optHint: "Formaat geldt voor secties-dashboards; sleep de sliders en sla op.",
     },
     fr: {
@@ -111,7 +111,7 @@
       forecastTitle: "Prévision 24 heures", forecastSub: "Soleil, consommation, plan batterie et charge",
       legSolar: "Soleil", legLoad: "Conso", legCharge: "Charge", legDischarge: "Décharge",
       now: "mnt", missing: "Entités Novolt introuvables. Installez l'intégration Novolt ou renseignez les entités dans la configuration de la carte.",
-      optColumns: "Largeur (colonnes sur 12)", optRows: "Hauteur (rangées)", optReference: "Puissance de référence (W)",
+      optFull: "Pleine largeur (toute la section)", optColumns: "Largeur (colonnes)", optRows: "Hauteur (rangées)", optReference: "Puissance de référence (W)",
       optHint: "La taille s'applique aux tableaux de bord en sections.",
     },
   };
@@ -285,7 +285,10 @@
           const config = { ...this._config };
           config.grid_options = {
             ...(config.grid_options || {}),
-            columns: value.columns,
+            // "full" spans the whole section whatever its width; a wide
+            // section has 12 columns per width unit, so a number only makes
+            // sense when full width is off.
+            columns: value.full_width ? "full" : value.columns,
             rows: value.rows,
           };
           for (const key of (this._defaults.extraKeys || [])) {
@@ -303,17 +306,23 @@
       const go = this._config.grid_options || {};
       this._form.hass = this._hass;
       this._form.schema = [
-        { name: "columns", selector: { number: { min: 1, max: 12, step: 1, mode: "slider" } } },
-        { name: "rows", selector: { number: { min: 2, max: 16, step: 1, mode: "slider" } } },
+        { name: "full_width", selector: { boolean: {} } },
+        // Slider minima match the card's real min_columns/min_rows, so every
+        // position on the slider actually does something. Max 24: a wide
+        // section has 12 columns per width unit.
+        { name: "columns", selector: { number: { min: d.minColumns ?? 1, max: 24, step: 1, mode: "slider" } } },
+        { name: "rows", selector: { number: { min: d.minRows ?? 2, max: 20, step: 1, mode: "slider" } } },
         ...(d.extras || []),
       ];
+      const full = go.columns === "full" || (go.columns == null && (d.columns ?? "full") === "full");
       this._form.data = {
-        columns: go.columns === "full" ? 12 : go.columns ?? d.columns ?? 12,
+        full_width: full,
+        columns: typeof go.columns === "number" ? go.columns : typeof d.columns === "number" ? d.columns : 12,
         rows: go.rows ?? d.rows ?? 4,
         ...(d.extraData ? d.extraData(this._config) : {}),
       };
       this._form.computeLabel = (field) =>
-        ({ columns: tr(this._hass, "optColumns"), rows: tr(this._hass, "optRows") })[field.name] ||
+        ({ full_width: tr(this._hass, "optFull"), columns: tr(this._hass, "optColumns"), rows: tr(this._hass, "optRows") })[field.name] ||
         (d.labels && d.labels(this._hass, field.name)) || field.name;
     }
   }
@@ -359,11 +368,11 @@
   class NovoltPowerFlowCard extends NovoltBaseCard {
     static cardSize = 6;
     getGridOptions() {
-      return { columns: 12, rows: 8, min_columns: 6, min_rows: 5 };
+      return { columns: "full", rows: 8, min_columns: 6, min_rows: 5 };
     }
     static getConfigElement() {
       return sizeEditor({
-        columns: 12, rows: 8,
+        columns: "full", rows: 8, minColumns: 6, minRows: 5,
         extras: [{ name: "reference_w", selector: { number: { min: 500, max: 20000, step: 100, mode: "box", unit_of_measurement: "W" } } }],
         extraKeys: ["reference_w"],
         extraData: (config) => ({ reference_w: config.reference_w ?? 2000 }),
@@ -583,7 +592,7 @@
       return { columns: 6, rows: 7, min_columns: 3, min_rows: 5 };
     }
     static getConfigElement() {
-      return sizeEditor({ columns: 6, rows: 7 });
+      return sizeEditor({ columns: 6, rows: 7, minColumns: 3, minRows: 5 });
     }
     _afterRender() {
       wireMoreInfo(this);
@@ -648,10 +657,10 @@
   class NovoltStatsCard extends NovoltBaseCard {
     static cardSize = 2;
     getGridOptions() {
-      return { columns: 12, rows: "auto", min_columns: 6 };
+      return { columns: "full", rows: "auto", min_columns: 6 };
     }
     static getConfigElement() {
-      return sizeEditor({ columns: 12, rows: 3 });
+      return sizeEditor({ columns: "full", rows: 3, minColumns: 6 });
     }
     _afterRender() {
       wireMoreInfo(this);
@@ -722,10 +731,10 @@
   class NovoltPriceCard extends NovoltBaseCard {
     static cardSize = 4;
     getGridOptions() {
-      return { columns: 12, rows: 5, min_columns: 6, min_rows: 4 };
+      return { columns: "full", rows: 5, min_columns: 6, min_rows: 4 };
     }
     static getConfigElement() {
-      return sizeEditor({ columns: 12, rows: 5 });
+      return sizeEditor({ columns: "full", rows: 5, minColumns: 6, minRows: 4 });
     }
     static css = `
       .nv-card { display: flex; flex-direction: column; }
@@ -802,10 +811,10 @@
   class NovoltForecastCard extends NovoltBaseCard {
     static cardSize = 5;
     getGridOptions() {
-      return { columns: 12, rows: 6, min_columns: 6, min_rows: 4 };
+      return { columns: "full", rows: 6, min_columns: 6, min_rows: 4 };
     }
     static getConfigElement() {
-      return sizeEditor({ columns: 12, rows: 6 });
+      return sizeEditor({ columns: "full", rows: 6, minColumns: 6, minRows: 4 });
     }
     static css = `
       .nv-card { display: flex; flex-direction: column; }
