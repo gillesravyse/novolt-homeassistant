@@ -1,14 +1,20 @@
 """Sensors for the Novolt integration.
 
-Four families, honest about data availability throughout (a stale edge or a
-missing price curve makes an entity ``unavailable`` — never a zero presented
-as a measurement):
+Honest about data availability throughout (a stale edge or a missing price
+curve makes an entity ``unavailable`` — never a zero presented as a
+measurement):
 
 * snapshot sensors — live powers, SOC and the current tariff prices (fast loop)
+* per-charger sensors — one device per charging station, off the same fast loop
+* per-source PV sensors — one entity per inverter on a multi-inverter site
 * energy sensors — cumulative kWh counters integrated client-side from the
   live powers, restored across restarts; these feed the Energy Dashboard
-* today sensors — the API's trailing-24h aggregates (slow loop)
-* plan sensors — the dispatch decision and planned battery power (slow loop)
+* insights sensors (slow loop) — the API's trailing-24h aggregates including
+  the euros saved and spent, the dispatch decision, the 24 h forecast
+  trajectories, the EV charge quota and the plan's grid peak
+
+The payload logic behind the values lives in :mod:`.derive`, free of Home
+Assistant imports so it can be tested without one.
 """
 
 from __future__ import annotations
@@ -25,7 +31,13 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfElectricCurrent,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfTime,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -33,9 +45,23 @@ from homeassistant.util import dt as dt_util
 
 from .const import BATTERY_COMMANDS, ENERGY_MAX_GAP_S
 from .coordinator import NovoltConfigEntry
-from .entity import NovoltEntity
+from .derive import (
+    CHARGER_STATUSES,
+    charger_status,
+    ev_hours,
+    ev_hours_attributes,
+    find_charger,
+    find_pv_source,
+    forecast_live,
+    house_no_ev,
+    peak_shaving_attributes,
+    plan_series,
+    plan_slot_value,
+)
+from .entity import NovoltEntity, charger_device_info
 
 PRICE_UNIT = "EUR/kWh"
+CURRENCY_EUR = "EUR"
 
 
 def _snapshot_live(data: dict[str, Any]) -> bool:
@@ -84,6 +110,10 @@ SNAPSHOT_SENSORS: tuple[NovoltSnapshotSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfPower.WATT,
         value_fn=lambda d: d.get("pv_w"),
         exists_fn=_has_solar,
+        # The per-inverter split behind the sum. Also exposed as one entity per
+        # source (see NovoltPvSourceSensor); the attribute is the fallback that
+        # survives a restart taken while the edge was offline.
+        attributes_fn=lambda d: {"sources": d.get("pv_sources", [])},
     ),
     NovoltSnapshotSensorDescription(
         key="grid_power",
@@ -116,6 +146,17 @@ SNAPSHOT_SENSORS: tuple[NovoltSnapshotSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPower.WATT,
         value_fn=lambda d: d.get("house_load_w"),
+    ),
+    NovoltSnapshotSensorDescription(
+        key="house_power_no_ev",
+        translation_key="house_power_no_ev",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        # The baseline load: house minus the cars. Only meaningful on a site
+        # with chargers — without them it would duplicate house_power.
+        value_fn=house_no_ev,
+        exists_fn=_has_ev,
     ),
     NovoltSnapshotSensorDescription(
         key="battery_power",
@@ -247,6 +288,137 @@ class NovoltPriceSensor(NovoltSnapshotSensor):
             self._entry.runtime_data.insights.data,
             _PRICE_FIELD[self.entity_description.key],
         )
+
+
+# ── per-source PV sensors (one entity per inverter) ─────────────────────────
+
+
+class NovoltPvSourceSensor(NovoltEntity, SensorEntity):
+    """One inverter's own PV power, beside the site total.
+
+    A source that drops out of ``pv_sources`` takes this entity to
+    ``unavailable`` with it (see :func:`derive.find_pv_source`).
+    """
+
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_translation_key = "pv_source_power"
+
+    def __init__(self, entry: NovoltConfigEntry, source: str) -> None:
+        super().__init__(entry.runtime_data.snapshot, entry, f"pv_source_{source}")
+        self._source = source
+        self._attr_translation_placeholders = {"source": source}
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and _snapshot_live(self.coordinator.data)
+            and find_pv_source(self.coordinator.data, self._source) is not None
+        )
+
+    @property
+    def native_value(self) -> StateType:
+        entry = find_pv_source(self.coordinator.data, self._source)
+        return None if entry is None else entry.get("power_w")
+
+
+# ── per-charger sensors (one device per charger) ────────────────────────────
+
+
+@dataclass(frozen=True, kw_only=True)
+class NovoltChargerSensorDescription(SensorEntityDescription):
+    """Describes one per-charger sensor fed by ``snapshot.chargers[]``."""
+
+    value_fn: Callable[[dict[str, Any]], StateType]
+    # Offline chargers are reported as 0 W by the API. For a measurement that
+    # is a fabricated reading, so power/session/limit go unavailable instead;
+    # the status sensor is the one entity that must still say "offline".
+    offline_ok: bool = False
+
+
+CHARGER_SENSORS: tuple[NovoltChargerSensorDescription, ...] = (
+    NovoltChargerSensorDescription(
+        key="power",
+        translation_key="charger_power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        value_fn=lambda c: c.get("power_w"),
+    ),
+    NovoltChargerSensorDescription(
+        key="session_energy",
+        translation_key="charger_session_energy",
+        device_class=SensorDeviceClass.ENERGY,
+        # A session counter resets to 0 when the next car plugs in, which is
+        # exactly the reset TOTAL_INCREASING is meant to absorb.
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        value_fn=lambda c: c.get("session_kwh"),
+    ),
+    NovoltChargerSensorDescription(
+        key="current_limit",
+        translation_key="charger_current_limit",
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        suggested_display_precision=1,
+        value_fn=lambda c: c.get("limit_a"),
+    ),
+    NovoltChargerSensorDescription(
+        key="status",
+        translation_key="charger_status",
+        device_class=SensorDeviceClass.ENUM,
+        options=CHARGER_STATUSES,
+        value_fn=charger_status,
+        offline_ok=True,
+    ),
+)
+
+
+class NovoltChargerSensor(NovoltEntity, SensorEntity):
+    """A sensor for one charger of the site."""
+
+    entity_description: NovoltChargerSensorDescription
+
+    def __init__(
+        self,
+        entry: NovoltConfigEntry,
+        charger: dict[str, Any],
+        description: NovoltChargerSensorDescription,
+    ) -> None:
+        charger_id = charger["id"]
+        super().__init__(
+            entry.runtime_data.snapshot,
+            entry,
+            f"charger_{charger_id}_{description.key}",
+            device=charger_device_info(entry, charger),
+        )
+        self.entity_description = description
+        self._charger_id = charger_id
+
+    @property
+    def _data(self) -> dict[str, Any] | None:
+        charger = find_charger(self.coordinator.data, self._charger_id)
+        if charger is None:
+            return None
+        if not self.entity_description.offline_ok and charger.get("status") == "offline":
+            return None
+        return charger
+
+    @property
+    def available(self) -> bool:
+        if not super().available or not _snapshot_live(self.coordinator.data):
+            return False
+        charger = self._data
+        return charger is not None and self.entity_description.value_fn(charger) is not None
+
+    @property
+    def native_value(self) -> StateType:
+        charger = self._data
+        return None if charger is None else self.entity_description.value_fn(charger)
 
 
 # ── energy sensors (client-side integrated counters) ────────────────────────
@@ -426,6 +598,16 @@ def _battery_plan_power(data: dict[str, Any]) -> StateType:
     return round(-float(value))
 
 
+def _slot(field: str, digits: int = 0) -> Callable[[dict[str, Any]], StateType]:
+    """Bind :func:`derive.plan_slot_value` to one schedule field."""
+    return lambda data: plan_slot_value(data, field, digits)
+
+
+def _series(field: str) -> Callable[[dict[str, Any]], dict[str, Any] | None]:
+    """Bind :func:`derive.plan_series` to one schedule field."""
+    return lambda data: plan_series(data, field)
+
+
 def _ev_next_cheap_start(data: dict[str, Any]) -> Any:
     schedule = ((data.get("plan") or {}).get("ev") or {}).get("schedule") or []
     now = dt_util.now()
@@ -523,6 +705,112 @@ INSIGHTS_SENSORS: tuple[NovoltInsightsSensorDescription, ...] = (
         live_fn=_plan_prices_live,
         exists_fn=_has_ev,
     ),
+    # ── euros: what the site saved and what it actually cost ──────────────
+    # No state_class: these are trailing-24 h rolling figures, and letting the
+    # statistics engine sum them would invent a total nobody measured.
+    NovoltInsightsSensorDescription(
+        key="today_saved",
+        translation_key="today_saved",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement=CURRENCY_EUR,
+        suggested_display_precision=2,
+        value_fn=_today_value("saved_eur"),
+        # null means no defensible figure (no prices for this contract, or no
+        # flows) — unavailable, never a fabricated € 0.
+        live_fn=lambda d: _today_live(d) and (d.get("today") or {}).get("saved_eur") is not None,
+    ),
+    NovoltInsightsSensorDescription(
+        key="today_cost",
+        translation_key="today_cost",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement=CURRENCY_EUR,
+        suggested_display_precision=2,
+        value_fn=_today_value("cost_eur"),
+        live_fn=lambda d: _today_live(d) and (d.get("today") or {}).get("cost_eur") is not None,
+    ),
+    # ── the rest of the forecast the planner already computed ─────────────
+    NovoltInsightsSensorDescription(
+        key="pv_forecast_power",
+        translation_key="pv_forecast_power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        value_fn=_slot("pv_w"),
+        live_fn=forecast_live,
+        exists_fn=_has_solar,
+        attributes_fn=_series("pv_w"),
+    ),
+    NovoltInsightsSensorDescription(
+        key="load_forecast_power",
+        translation_key="load_forecast_power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        value_fn=_slot("load_w"),
+        live_fn=forecast_live,
+        attributes_fn=_series("load_w"),
+    ),
+    NovoltInsightsSensorDescription(
+        key="grid_forecast_power",
+        translation_key="grid_forecast_power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        # Same canonical sign as the live grid sensor: import positive.
+        value_fn=_slot("grid_w"),
+        live_fn=forecast_live,
+        attributes_fn=_series("grid_w"),
+    ),
+    NovoltInsightsSensorDescription(
+        key="battery_soc_forecast",
+        translation_key="battery_soc_forecast",
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        suggested_display_precision=1,
+        # soc_pct is null on a forecast-only plan (no battery to track), which
+        # the value/live pair turns into unavailable rather than 0 %.
+        value_fn=_slot("soc_pct", digits=1),
+        live_fn=lambda d: forecast_live(d)
+        and _slot("soc_pct", digits=1)(d) is not None,
+        exists_fn=_has_battery,
+        attributes_fn=_series("soc_pct"),
+    ),
+    # ── EV charge quota ("5 uur = 5 uur") ─────────────────────────────────
+    NovoltInsightsSensorDescription(
+        key="ev_hours_done",
+        translation_key="ev_hours_done",
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTime.HOURS,
+        value_fn=lambda d: ev_hours(d, "done_hours"),
+        live_fn=_plan_live,
+        exists_fn=_has_ev,
+        attributes_fn=ev_hours_attributes,
+    ),
+    NovoltInsightsSensorDescription(
+        key="ev_hours_remaining",
+        translation_key="ev_hours_remaining",
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTime.HOURS,
+        value_fn=lambda d: ev_hours(d, "remaining_hours"),
+        live_fn=_plan_live,
+        exists_fn=_has_ev,
+        attributes_fn=ev_hours_attributes,
+    ),
+    # ── the plan's own grid peak, with the measured reality beside it ─────
+    NovoltInsightsSensorDescription(
+        key="plan_grid_peak",
+        translation_key="plan_grid_peak",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        value_fn=lambda d: ((d.get("plan") or {}).get("peak_shaving") or {}).get("planned_peak_w"),
+        live_fn=lambda d: forecast_live(d)
+        and ((d.get("plan") or {}).get("peak_shaving") or {}).get("planned_peak_w") is not None,
+        attributes_fn=peak_shaving_attributes,
+    ),
 )
 
 
@@ -560,13 +848,31 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Novolt sensors, gated by the site's resolved capabilities."""
-    caps = (entry.runtime_data.snapshot.data or {}).get("capabilities") or {}
+    snapshot = entry.runtime_data.snapshot.data or {}
+    caps = snapshot.get("capabilities") or {}
     entities: list[SensorEntity] = [
         NovoltSnapshotSensor(entry, description)
         for description in SNAPSHOT_SENSORS
         if description.exists_fn(caps)
     ]
     entities.extend(NovoltPriceSensor(entry, description) for description in PRICE_SENSORS)
+    # Per-charger and per-inverter entities are discovered from the first
+    # snapshot. Registered chargers are always in that list (offline ones
+    # included), so only an unregistered charger or a brand-new inverter needs
+    # a reload of the integration before it gets its own entities.
+    if _has_ev(caps):
+        for charger in snapshot.get("chargers") or []:
+            if not charger.get("id"):
+                continue
+            entities.extend(
+                NovoltChargerSensor(entry, charger, description)
+                for description in CHARGER_SENSORS
+            )
+    # Only worth splitting out when there is more than one inverter: on a
+    # single-source site the per-source entity is just pv_power again.
+    pv_sources = [s["source"] for s in snapshot.get("pv_sources") or [] if s.get("source")]
+    if _has_solar(caps) and len(pv_sources) > 1:
+        entities.extend(NovoltPvSourceSensor(entry, source) for source in pv_sources)
     entities.extend(
         NovoltEnergySensor(entry, description)
         for description in ENERGY_SENSORS

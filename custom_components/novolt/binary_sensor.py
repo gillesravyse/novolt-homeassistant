@@ -17,7 +17,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .coordinator import NovoltConfigEntry
-from .entity import NovoltEntity
+from .derive import find_charger
+from .entity import NovoltEntity, charger_device_info
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -49,6 +50,21 @@ SNAPSHOT_BINARY_SENSORS: tuple[NovoltBinarySensorDescription, ...] = (
     ),
 )
 
+# State (not diagnostics) off the same fast loop.
+SNAPSHOT_STATE_BINARY_SENSORS: tuple[NovoltBinarySensorDescription, ...] = (
+    NovoltBinarySensorDescription(
+        key="ev_charging",
+        translation_key="ev_charging",
+        device_class=BinarySensorDeviceClass.BATTERY_CHARGING,
+        value_fn=lambda d: any(
+            c.get("status") == "charging" for c in d.get("chargers") or []
+        ),
+        # Without fresh telemetry "not charging" would be a guess, not a fact.
+        live_fn=lambda d: bool(d.get("live")) and bool(d.get("chargers")),
+        exists_fn=lambda caps: bool(caps.get("ev", True)),
+    ),
+)
+
 INSIGHTS_BINARY_SENSORS: tuple[NovoltBinarySensorDescription, ...] = (
     NovoltBinarySensorDescription(
         key="ev_cheap_now",
@@ -62,6 +78,73 @@ INSIGHTS_BINARY_SENSORS: tuple[NovoltBinarySensorDescription, ...] = (
         },
     ),
 )
+
+
+# ── per-charger binary sensors (one device per charger) ─────────────────────
+
+
+@dataclass(frozen=True, kw_only=True)
+class NovoltChargerBinarySensorDescription(BinarySensorEntityDescription):
+    """Describes one per-charger binary sensor fed by ``snapshot.chargers[]``."""
+
+    value_fn: Callable[[dict[str, Any]], bool]
+
+
+CHARGER_BINARY_SENSORS: tuple[NovoltChargerBinarySensorDescription, ...] = (
+    NovoltChargerBinarySensorDescription(
+        key="online",
+        translation_key="charger_online",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        # "offline" is the API's word for a registered charger without a fresh
+        # sample; everything else means it is reporting.
+        value_fn=lambda c: c.get("status") != "offline",
+    ),
+    NovoltChargerBinarySensorDescription(
+        key="charging",
+        translation_key="charger_charging",
+        device_class=BinarySensorDeviceClass.BATTERY_CHARGING,
+        value_fn=lambda c: c.get("status") == "charging",
+    ),
+)
+
+
+class NovoltChargerBinarySensor(NovoltEntity, BinarySensorEntity):
+    """A binary sensor for one charger of the site."""
+
+    entity_description: NovoltChargerBinarySensorDescription
+
+    def __init__(
+        self,
+        entry: NovoltConfigEntry,
+        charger: dict[str, Any],
+        description: NovoltChargerBinarySensorDescription,
+    ) -> None:
+        charger_id = charger["id"]
+        super().__init__(
+            entry.runtime_data.snapshot,
+            entry,
+            f"charger_{charger_id}_{description.key}",
+            device=charger_device_info(entry, charger),
+        )
+        self.entity_description = description
+        self._charger_id = charger_id
+
+    @property
+    def _charger(self) -> dict[str, Any] | None:
+        return find_charger(self.coordinator.data, self._charger_id)
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and bool(self.coordinator.data.get("live"))
+            and self._charger is not None
+        )
+
+    @property
+    def is_on(self) -> bool:
+        charger = self._charger
+        return charger is not None and self.entity_description.value_fn(charger)
 
 
 class NovoltBinarySensor(NovoltEntity, BinarySensorEntity):
@@ -100,10 +183,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up Novolt binary sensors."""
     data = entry.runtime_data
-    caps = (data.snapshot.data or {}).get("capabilities") or {}
-    entities = [
+    snapshot = data.snapshot.data or {}
+    caps = snapshot.get("capabilities") or {}
+    entities: list[BinarySensorEntity] = [
         NovoltBinarySensor(data.snapshot, entry, description)
-        for description in SNAPSHOT_BINARY_SENSORS
+        for description in SNAPSHOT_BINARY_SENSORS + SNAPSHOT_STATE_BINARY_SENSORS
         if description.exists_fn(caps)
     ]
     entities.extend(
@@ -111,4 +195,14 @@ async def async_setup_entry(
         for description in INSIGHTS_BINARY_SENSORS
         if description.exists_fn(caps)
     )
+    # Per-charger devices follow the site's EV capability, exactly like the
+    # site-level EV entities do.
+    if caps.get("ev", True):
+        for charger in snapshot.get("chargers") or []:
+            if not charger.get("id"):
+                continue
+            entities.extend(
+                NovoltChargerBinarySensor(entry, charger, description)
+                for description in CHARGER_BINARY_SENSORS
+            )
     async_add_entities(entities)

@@ -49,6 +49,8 @@
       "grid_import_power": { "name": "Grid import power" },
       "grid_export_power": { "name": "Grid export power" },
       "house_power": { "name": "House power" },
+      "house_power_no_ev": { "name": "House power excl. EV" },
+      "pv_source_power": { "name": "PV power {source}" },
       "battery_power": { "name": "Battery power" },
       "battery_soc": { "name": "Battery" },
       "ev_power": { "name": "EV power" },
@@ -74,12 +76,40 @@
         }
       },
       "battery_plan_power": { "name": "Planned battery power" },
-      "ev_next_cheap_start": { "name": "Next cheap EV hour" }
+      "ev_next_cheap_start": { "name": "Next cheap EV hour" },
+      "today_saved": { "name": "Savings last 24h" },
+      "today_cost": { "name": "Cost last 24h" },
+      "pv_forecast_power": { "name": "Forecast PV power" },
+      "load_forecast_power": { "name": "Forecast house power" },
+      "grid_forecast_power": { "name": "Forecast grid power" },
+      "battery_soc_forecast": { "name": "Forecast battery" },
+      "ev_hours_done": { "name": "EV charge hours done" },
+      "ev_hours_remaining": { "name": "EV charge hours remaining" },
+      "plan_grid_peak": { "name": "Planned grid peak" },
+      "charger_power": { "name": "Power" },
+      "charger_session_energy": { "name": "Session energy" },
+      "charger_current_limit": { "name": "Current limit" },
+      "charger_status": {
+        "name": "Status",
+        "state": {
+          "offline": "Offline",
+          "disconnected": "Disconnected",
+          "awaiting_start": "Awaiting start",
+          "ready_to_charge": "Ready to charge",
+          "charging": "Charging",
+          "completed": "Completed",
+          "error": "Error",
+          "unknown": "Unknown"
+        }
+      }
     },
     "binary_sensor": {
       "data_live": { "name": "Live data" },
       "prices_live": { "name": "Live prices" },
-      "ev_cheap_now": { "name": "EV cheap hour" }
+      "ev_cheap_now": { "name": "EV cheap hour" },
+      "ev_charging": { "name": "EV charging" },
+      "charger_online": { "name": "Online" },
+      "charger_charging": { "name": "Charging" }
     }
   }
 }

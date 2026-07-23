@@ -10,10 +10,12 @@ Bring your [Novolt](https://novolt.be) site into Home Assistant: live power flow
 
 ## Features
 
-- **Live power flows**: PV, grid (net / import / export), house load, battery power & state of charge, EV charging power (30 s polling by default).
+- **Live power flows**: PV, grid (net / import / export), house load (with and without the cars), battery power & state of charge, EV charging power (30 s polling by default).
 - **Energy Dashboard ready**: cumulative kWh counters for grid import/export, PV production and battery charge/discharge, integrated from the live measurements and restored across restarts.
 - **Dynamic prices**: the current retail and injection price for *your* tariff, with the full day-ahead curve as attributes (works with ApexCharts cards).
-- **Dispatch plan**: the battery command Novolt is running (idle / force charge / force discharge), the planned battery power with the 24 h schedule as attributes, and the cheap EV-charging hours.
+- **What it saved you**: the savings and the real cost over the trailing 24 h, in euros, straight from Novolt's savings model.
+- **Every charger separately**: each charging station becomes its own device with power, session energy, current limit, status, online and charging entities.
+- **The full 24 h forecast**: not just the battery plan but the sun, house-load, grid and state-of-charge trajectories behind it, each with its own chart-ready series.
 - **Honest data**: when telemetry or prices are stale or missing, entities become `unavailable`. You will never see a fabricated zero.
 
 Entities adapt to your site: a home without a battery gets no battery entities, PV-only sites get no EV entities, and so on.
@@ -146,16 +148,42 @@ actions:
 
 ## Entities
 
+### On the site device
+
 | Entity | Description |
 | --- | --- |
 | PV / Grid / House / Battery / EV power | Live powers in W (grid & battery also as net values: import/charge positive) |
+| House power excl. EV | The same house load with the cars taken out: your baseline consumption |
+| PV power `<source>` | One entity per inverter when your site has more than one, so a frozen cloud feed shows up as `unavailable` instead of quietly shrinking the total |
 | Battery | State of charge (%) |
 | Current price / injection price | €/kWh for your tariff, day-ahead curve in `raw_today` / `raw_tomorrow` attributes |
+| Savings / Cost last 24h | What Novolt saved you and what the electricity actually cost, in € |
 | Battery command | What the optimizer is doing now (`idle`, `force_charge`, `force_discharge`) with the reason as attribute |
 | Planned battery power | The optimizer's target for the current slot, 24 h schedule as attribute |
+| Forecast PV / house / grid power, Forecast battery | The rest of the 24 h plan: the current slot as state, the whole series in the `forecast` attribute |
+| Planned grid peak | The peak the plan draws, with your limit and the *measured* peak beside it in the attributes |
 | EV cheap hour / Next cheap EV hour | Whether now is a selected cheap charging hour, and when the next one starts |
+| EV charge hours done / remaining | Progress on the charge quota, across both the daily default and any explicit charge requests |
+| EV charging | Whether any charger is actually delivering power right now |
 | … last 24h | Trailing-24 h energy aggregates and self-sufficiency as reported by Novolt |
 | Live data / Live prices | Diagnostic flags: is fresh telemetry / a real price curve available? |
+
+### On each charger device
+
+Every charging station Novolt knows about becomes its own device under the site, named as in the Novolt app.
+
+| Entity | Description |
+| --- | --- |
+| Power | What this charger is drawing (W) |
+| Session energy | Energy delivered in the running session (kWh); resets when the next car plugs in |
+| Current limit | The dynamic charging limit the charger is applying (A) |
+| Status | `charging`, `ready_to_charge`, `disconnected`, `offline`, … |
+| Online / Charging | Is the charger reporting, and is it actually charging? |
+
+An offline charger reports its status as `offline`; its power, session and limit entities go `unavailable` rather than claiming a measured 0.
+
+> [!NOTE]
+> Chargers and inverters are discovered when the integration loads. After adding one in the Novolt app, reload the integration (**⋮ → Reload**) to get its entities.
 
 ## Notes
 

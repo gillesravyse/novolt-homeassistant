@@ -49,6 +49,8 @@
       "grid_import_power": { "name": "Prélèvement réseau" },
       "grid_export_power": { "name": "Injection réseau" },
       "house_power": { "name": "Consommation maison" },
+      "house_power_no_ev": { "name": "Consommation maison hors VE" },
+      "pv_source_power": { "name": "Puissance PV {source}" },
       "battery_power": { "name": "Puissance batterie" },
       "battery_soc": { "name": "Batterie" },
       "ev_power": { "name": "Puissance VE" },
@@ -74,12 +76,40 @@
         }
       },
       "battery_plan_power": { "name": "Puissance batterie planifiée" },
-      "ev_next_cheap_start": { "name": "Prochaine heure creuse VE" }
+      "ev_next_cheap_start": { "name": "Prochaine heure creuse VE" },
+      "today_saved": { "name": "Économies dernières 24 h" },
+      "today_cost": { "name": "Coût dernières 24 h" },
+      "pv_forecast_power": { "name": "Puissance PV prévue" },
+      "load_forecast_power": { "name": "Consommation maison prévue" },
+      "grid_forecast_power": { "name": "Puissance réseau prévue" },
+      "battery_soc_forecast": { "name": "Batterie prévue" },
+      "ev_hours_done": { "name": "Heures de charge VE effectuées" },
+      "ev_hours_remaining": { "name": "Heures de charge VE restantes" },
+      "plan_grid_peak": { "name": "Pic réseau planifié" },
+      "charger_power": { "name": "Puissance" },
+      "charger_session_energy": { "name": "Énergie de session" },
+      "charger_current_limit": { "name": "Limite de courant" },
+      "charger_status": {
+        "name": "Statut",
+        "state": {
+          "offline": "Hors ligne",
+          "disconnected": "Déconnecté",
+          "awaiting_start": "En attente de démarrage",
+          "ready_to_charge": "Prêt à charger",
+          "charging": "En charge",
+          "completed": "Terminé",
+          "error": "Erreur",
+          "unknown": "Inconnu"
+        }
+      }
     },
     "binary_sensor": {
       "data_live": { "name": "Données en direct" },
       "prices_live": { "name": "Prix en direct" },
-      "ev_cheap_now": { "name": "Heure creuse VE" }
+      "ev_cheap_now": { "name": "Heure creuse VE" },
+      "ev_charging": { "name": "Charge VE" },
+      "charger_online": { "name": "En ligne" },
+      "charger_charging": { "name": "En charge" }
     }
   }
 }
