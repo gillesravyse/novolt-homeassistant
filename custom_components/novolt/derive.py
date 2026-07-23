@@ -151,12 +151,24 @@ def ev_hours_attributes(data: dict[str, Any]) -> dict[str, Any]:
 
     Those live on the EV cheap-hour binary sensor; repeating them here would
     put the same fat payload in the state machine several times over.
+
+    ``default`` is the site-level roll-up of the daily schedule; ``defaults``
+    breaks it down per charger, since each one can carry its own cheap-hour
+    quota and ready-by hour. Older platforms send no ``defaults`` at all — the
+    attribute is then simply absent rather than a fabricated single entry.
     """
     ev = (data.get("plan") or {}).get("ev") or {}
-    return {
+    attributes: dict[str, Any] = {
         "default": ev.get("default") or {},
         "requests": [
             {key: value for key, value in request.items() if key != "schedule"}
             for request in ev.get("requests") or []
         ],
     }
+    defaults = ev.get("defaults")
+    if isinstance(defaults, list):
+        attributes["defaults"] = [
+            {key: value for key, value in entry.items() if key != "schedule"}
+            for entry in defaults
+        ]
+    return attributes
