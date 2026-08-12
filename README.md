@@ -157,7 +157,7 @@ actions:
 | PV power `<source>` | One entity per inverter when your site has more than one, so a frozen cloud feed shows up as `unavailable` instead of quietly shrinking the total |
 | Battery | State of charge (%) |
 | Current price / injection price | €/kWh for your tariff, day-ahead curve in `raw_today` / `raw_tomorrow` attributes |
-| Savings / Cost last 24h | What Novolt saved you and what the electricity actually cost, in € |
+| Savings / Cost today | What Novolt saved you and what the electricity actually cost since midnight, in € |
 | Battery command | What the optimizer is doing now (`idle`, `force_charge`, `force_discharge`) with the reason as attribute |
 | Planned battery power | The optimizer's target for the current slot, 24 h schedule as attribute |
 | Forecast PV / house / grid power, Forecast battery | The rest of the 24 h plan: the current slot as state, the whole series in the `forecast` attribute |
@@ -165,7 +165,7 @@ actions:
 | EV cheap hour / Next cheap EV hour | Whether now is a selected cheap charging hour, and when the next one starts |
 | EV charge hours done / remaining | Progress on the charge quota, across both the daily default and any explicit charge requests |
 | EV charging | Whether any charger is actually delivering power right now |
-| … last 24h | Trailing-24 h energy aggregates and self-sufficiency as reported by Novolt |
+| … today | Energy aggregates and self-sufficiency since local midnight, as reported by Novolt |
 | Live data / Live prices | Diagnostic flags: is fresh telemetry / a real price curve available? |
 
 ### On each charger device
