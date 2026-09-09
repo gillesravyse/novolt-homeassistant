@@ -40,6 +40,7 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
@@ -55,10 +56,12 @@ from .derive import (
     find_charger,
     find_pv_source,
     forecast_live,
+    freshness_attributes,
     house_no_ev,
     peak_shaving_attributes,
     plan_series,
     plan_slot_value,
+    today_window_attributes,
 )
 from .entity import NovoltEntity, charger_device_info
 
@@ -88,6 +91,17 @@ def _has_solar(caps: dict[str, Any]) -> bool:
 
 def _has_ev(caps: dict[str, Any]) -> bool:
     return bool(caps.get("ev", True))
+
+
+def _data_ts(data: dict[str, Any]) -> Any:
+    """When this picture was actually measured, not when we asked for it."""
+    parsed = dt_util.parse_datetime(data.get("data_ts") or "")
+    if parsed is None:
+        return None
+    # A timestamp sensor must be timezone-aware or Home Assistant refuses the
+    # state. The platform sends an offset; an older one sending a bare local
+    # time is read as local rather than dropped.
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
 
 
 # ── snapshot sensors (fast loop) ────────────────────────────────────────────
@@ -179,6 +193,17 @@ SNAPSHOT_SENSORS: tuple[NovoltSnapshotSensorDescription, ...] = (
         exists_fn=_has_battery,
     ),
     NovoltSnapshotSensorDescription(
+        key="pv_surplus",
+        translation_key="pv_surplus",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        suggested_display_precision=0,
+        value_fn=lambda d: d.get("pv_surplus_w"),
+        live_fn=lambda d: _snapshot_live(d) and d.get("pv_surplus_w") is not None,
+        exists_fn=_has_solar,
+    ),
+    NovoltSnapshotSensorDescription(
         key="ev_power",
         translation_key="ev_power",
         device_class=SensorDeviceClass.POWER,
@@ -187,6 +212,34 @@ SNAPSHOT_SENSORS: tuple[NovoltSnapshotSensorDescription, ...] = (
         value_fn=lambda d: d.get("ev_w"),
         exists_fn=_has_ev,
         attributes_fn=lambda d: {"chargers": d.get("chargers", [])},
+    ),
+    # What the plan is willing to hand the cars right now: the ceiling the
+    # chargers are steered against, beside the power they actually draw. Null
+    # on a site with no chargers, and on a platform that predates the field —
+    # unavailable either way, never a ceiling we invented.
+    NovoltSnapshotSensorDescription(
+        key="ev_budget",
+        translation_key="ev_budget",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        suggested_display_precision=0,
+        value_fn=lambda d: d.get("ev_budget_w"),
+        live_fn=lambda d: d.get("ev_budget_w") is not None,
+        exists_fn=_has_ev,
+    ),
+    # The measurement moment itself. Deliberately not gated on ``live``: this
+    # entity is how you find out *why* the rest went unavailable, so it has to
+    # survive the staleness it reports. Unavailable only when the platform sends
+    # no read moment at all (an older edge) — unknown is a real answer here.
+    NovoltSnapshotSensorDescription(
+        key="data_ts",
+        translation_key="data_ts",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_data_ts,
+        live_fn=lambda d: _data_ts(d) is not None,
+        attributes_fn=freshness_attributes,
     ),
 )
 
@@ -244,6 +297,13 @@ def _price_curve_attributes(
         "raw_today": raw_today,
         "raw_tomorrow": raw_tomorrow,
         "tomorrow_valid": bool(raw_tomorrow),
+        # Which contract these prices came from, and the fixed part of the
+        # kWh price underneath them (grid fee, levies, VAT — what a kWh costs
+        # when the market itself is at zero). A chart that subtracts the floor
+        # shows only the part that actually moves; one that does not at least
+        # knows it is drawing a fixed tariff instead of a curve.
+        "scheme": prices.get("scheme"),
+        "price_floor": prices.get("price_floor"),
     }
     if raw_today:
         values = [slot["price"] for slot in raw_today]
@@ -587,6 +647,13 @@ def _plan_schedule_attributes(data: dict[str, Any]) -> dict[str, Any] | None:
         "method": forecast.get("method"),
         "generated_at": forecast.get("generated_at"),
         "schedule": plan.get("schedule", []),
+        # The setpoint magnitude the controller ignores. Without it a reader
+        # cannot tell the smallest command the plan is allowed to make from a
+        # deliberate one, and would read every small movement as a decision.
+        "dispatch_deadband_w": plan.get("dispatch_deadband_w"),
+        # What the site owner's own rules cost over this horizon, and whether
+        # they were applied. A rule that priced itself out has to say so.
+        "owner_rules": plan.get("owner_rules") or [],
     }
 
 
@@ -629,6 +696,7 @@ INSIGHTS_SENSORS: tuple[NovoltInsightsSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         value_fn=_today_value("pv_kwh"),
+        attributes_fn=today_window_attributes,
         live_fn=_today_live,
         exists_fn=_has_solar,
     ),
@@ -638,6 +706,7 @@ INSIGHTS_SENSORS: tuple[NovoltInsightsSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         value_fn=_today_value("import_kwh"),
+        attributes_fn=today_window_attributes,
         live_fn=_today_live,
     ),
     NovoltInsightsSensorDescription(
@@ -646,6 +715,7 @@ INSIGHTS_SENSORS: tuple[NovoltInsightsSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         value_fn=_today_value("export_kwh"),
+        attributes_fn=today_window_attributes,
         live_fn=_today_live,
     ),
     NovoltInsightsSensorDescription(
@@ -654,6 +724,7 @@ INSIGHTS_SENSORS: tuple[NovoltInsightsSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         value_fn=_today_value("batt_charge_kwh"),
+        attributes_fn=today_window_attributes,
         live_fn=_today_live,
         exists_fn=_has_battery,
     ),
@@ -663,6 +734,7 @@ INSIGHTS_SENSORS: tuple[NovoltInsightsSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         value_fn=_today_value("batt_discharge_kwh"),
+        attributes_fn=today_window_attributes,
         live_fn=_today_live,
         exists_fn=_has_battery,
     ),
@@ -672,6 +744,7 @@ INSIGHTS_SENSORS: tuple[NovoltInsightsSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         value_fn=_today_value("self_sufficiency_pct"),
+        attributes_fn=today_window_attributes,
         live_fn=_today_live,
     ),
     NovoltInsightsSensorDescription(
@@ -708,8 +781,8 @@ INSIGHTS_SENSORS: tuple[NovoltInsightsSensorDescription, ...] = (
         exists_fn=_has_ev,
     ),
     # ── euros: what the site saved and what it actually cost ──────────────
-    # No state_class: these are trailing-24 h rolling figures, and letting the
-    # statistics engine sum them would invent a total nobody measured.
+    # No state_class: these reset at local midnight, and letting the statistics
+    # engine sum a resetting figure would invent a total nobody measured.
     NovoltInsightsSensorDescription(
         key="today_saved",
         translation_key="today_saved",
@@ -717,6 +790,7 @@ INSIGHTS_SENSORS: tuple[NovoltInsightsSensorDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EUR,
         suggested_display_precision=2,
         value_fn=_today_value("saved_eur"),
+        attributes_fn=today_window_attributes,
         # null means no defensible figure (no prices for this contract, or no
         # flows) — unavailable, never a fabricated € 0.
         live_fn=lambda d: _today_live(d) and (d.get("today") or {}).get("saved_eur") is not None,
@@ -728,6 +802,7 @@ INSIGHTS_SENSORS: tuple[NovoltInsightsSensorDescription, ...] = (
         native_unit_of_measurement=CURRENCY_EUR,
         suggested_display_precision=2,
         value_fn=_today_value("cost_eur"),
+        attributes_fn=today_window_attributes,
         live_fn=lambda d: _today_live(d) and (d.get("today") or {}).get("cost_eur") is not None,
     ),
     # ── the rest of the forecast the planner already computed ─────────────

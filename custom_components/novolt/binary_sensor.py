@@ -17,7 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .coordinator import NovoltConfigEntry
-from .derive import find_charger
+from .derive import find_charger, steers_anything
 from .entity import NovoltEntity, charger_device_info
 
 
@@ -47,6 +47,23 @@ SNAPSHOT_BINARY_SENSORS: tuple[NovoltBinarySensorDescription, ...] = (
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: bool(d.get("prices_live")),
+    ),
+    # Do we actually steer this site, or do we only watch it. An automation
+    # that assumes Novolt is dispatching the battery while the site sits in
+    # shadow mode would be acting on a claim nobody made, so the claim gets
+    # its own entity. ``read_only`` is the site-wide answer (we write nowhere);
+    # the battery-specific one rides along as an attribute.
+    #
+    # Unavailable rather than ``off`` when the field is absent: a platform that
+    # predates it says nothing about steering, and "nothing" must not be read
+    # as "no".
+    NovoltBinarySensorDescription(
+        key="steering",
+        translation_key="steering",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: bool(steers_anything(d)),
+        live_fn=lambda d: steers_anything(d) is not None,
+        attributes_fn=lambda d: {"battery": d.get("steering")},
     ),
 )
 

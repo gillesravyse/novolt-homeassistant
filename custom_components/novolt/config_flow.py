@@ -50,6 +50,20 @@ async def _validate(hass: HomeAssistant, api_key: str, base_url: str) -> dict[st
     return await client.snapshot()
 
 
+def _title(snapshot: dict[str, Any]) -> str:
+    """The site's own name, so two sites are two readable devices.
+
+    Everything on the site device is named after the entry, and a second entry
+    titled "Novolt" as well would give a two-site household two identically
+    named devices with nothing to tell them apart. Existing entries keep the
+    title they have — renaming someone's device on an update is not an upgrade.
+    """
+    name = snapshot.get("site_name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return "Novolt"
+
+
 def _unique_id(api_key: str, snapshot: dict[str, Any]) -> str:
     """Stable identity for the entry.
 
@@ -89,7 +103,7 @@ class NovoltConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(_unique_id(api_key, snapshot))
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title="Novolt",
+                    title=_title(snapshot),
                     data={CONF_API_KEY: api_key, CONF_BASE_URL: base_url},
                 )
         return self.async_show_form(

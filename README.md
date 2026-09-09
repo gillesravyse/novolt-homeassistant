@@ -13,7 +13,7 @@ Bring your [Novolt](https://novolt.be) site into Home Assistant: live power flow
 - **Live power flows**: PV, grid (net / import / export), house load (with and without the cars), battery power & state of charge, EV charging power (30 s polling by default).
 - **Energy Dashboard ready**: cumulative kWh counters for grid import/export, PV production and battery charge/discharge, integrated from the live measurements and restored across restarts.
 - **Dynamic prices**: the current retail and injection price for *your* tariff, with the full day-ahead curve as attributes (works with ApexCharts cards).
-- **What it saved you**: the savings and the real cost over the trailing 24 h, in euros, straight from Novolt's savings model.
+- **What it saved you**: the savings and the real cost since local midnight, in euros, straight from Novolt's savings model. Every daily sensor carries the window it was measured over in its attributes, so "today" never has to be assumed.
 - **Every charger separately**: each charging station becomes its own device with power, session energy, current limit, status, online and charging entities.
 - **The full 24 h forecast**: not just the battery plan but the sun, house-load, grid and state-of-charge trajectories behind it, each with its own chart-ready series.
 - **Honest data**: when telemetry or prices are stale or missing, entities become `unavailable`. You will never see a fabricated zero.
@@ -31,6 +31,15 @@ Entities adapt to your site: a home without a battery gets no battery entities, 
 ### Manual
 
 Copy `custom_components/novolt/` into your Home Assistant `config/custom_components/` directory and restart.
+
+### Updating
+
+HACS offers the newest release; install it and restart Home Assistant. Updates are safe to take in any order:
+
+- **Your entities survive.** Entity IDs are derived from an identity that has not changed since the first release, so your dashboards, automations and long-term statistics keep working. No release has ever renamed or removed an entity, and none will without saying so here.
+- **New entities simply appear.** Anything added is additive and capability-gated, so a PV-only home does not suddenly grow battery entities.
+- **Older Novolt platforms keep working.** The API only ever adds fields. An entity whose field a given platform does not send yet reports `unavailable` instead of guessing a value for it.
+- **Display names can change without the entity changing.** A renamed sensor keeps its entity ID, so an existing install may show an older name than a fresh one. Rename it in Home Assistant if it bothers you; nothing breaks either way.
 
 ## Configuration
 
@@ -164,9 +173,14 @@ actions:
 | Planned grid peak | The peak the plan draws, with your limit and the *measured* peak beside it in the attributes |
 | EV cheap hour / Next cheap EV hour | Whether now is a selected cheap charging hour, and when the next one starts |
 | EV charge hours done / remaining | Progress on the charge quota, across both the daily default and any explicit charge requests |
+| EV kilometres charged / remaining | The same progress for a site that states its charging jobs in kilometres; `unavailable` on a site that plans in hours, because those jobs carry no distance at all |
+| EV power budget | The ceiling the chargers are steered against right now, beside the power they actually draw |
+| PV surplus | The part of the sun the house is not using: what there is to store or sell |
 | EV charging | Whether any charger is actually delivering power right now |
 | … today | Energy aggregates and self-sufficiency since local midnight, as reported by Novolt |
 | Live data / Live prices | Diagnostic flags: is fresh telemetry / a real price curve available? |
+| Steering | Diagnostic: does Novolt actually write to this site, or only watch it? `unavailable` when the platform does not say, because silence is not a "no" |
+| Last measurement | Diagnostic: when this picture was measured (not when we asked), with the age and the spread between sources in its attributes. It survives the staleness it reports, so it is what tells you *why* the rest went unavailable |
 
 ### On each charger device
 
@@ -188,5 +202,5 @@ An offline charger reports its status as `offline`; its power, session and limit
 ## Notes
 
 - The integration is **read-only** by construction: Novolt API keys can only read your own site's data. Control actions stay in the Novolt platform.
-- Requires Home Assistant 2024.8 or newer.
+- Requires Home Assistant **2024.11** or newer (the config flow uses the reauth helpers introduced in that release).
 - Issues and feature requests: [GitHub issues](https://github.com/gillesravyse/novolt-homeassistant/issues).

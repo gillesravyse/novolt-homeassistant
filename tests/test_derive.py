@@ -14,10 +14,13 @@ from novolt_derive import (
     find_charger,
     find_pv_source,
     forecast_live,
+    freshness_attributes,
     house_no_ev,
     peak_shaving_attributes,
     plan_series,
     plan_slot_value,
+    steers_anything,
+    today_window_attributes,
 )
 
 import pytest
@@ -342,3 +345,60 @@ def test_peak_shaving_without_a_limit_stays_null():
         "history_hours_required",
     }
     assert all(value is None for value in attrs.values())
+
+
+# ── do we actually steer, or only watch ─────────────────────────────────────
+
+
+def test_steering_follows_the_site_wide_read_only_flag():
+    assert steers_anything({"read_only": False}) is True
+    assert steers_anything({"read_only": True}) is False
+
+
+def test_steering_is_unknown_when_the_platform_does_not_say():
+    # A platform that predates the flag makes no claim about steering, and
+    # silence must not be read as "no" — the entity goes unavailable instead.
+    assert steers_anything({}) is None
+    assert steers_anything({"read_only": None}) is None
+
+
+# ── the measurement moment ──────────────────────────────────────────────────
+
+
+def test_freshness_reports_age_and_skew_with_the_sources_behind_them():
+    attrs = freshness_attributes(
+        {
+            "data_ts": "2026-09-10T08:15:30+02:00",
+            "data_age_s": 4.2,
+            "skew_s": 1.35,
+            "sources": [{"source": "meter", "age_s": 4.2, "read_s": 0.31}],
+        }
+    )
+    assert attrs["data_age_s"] == 4.2
+    assert attrs["skew_s"] == 1.35
+    assert attrs["sources"][0]["source"] == "meter"
+
+
+def test_freshness_keeps_skew_null_when_it_cannot_be_known():
+    # One source cannot be skewed against itself, and an edge that does not
+    # report its read moments cannot answer the question at all. Null is the
+    # honest answer; a 0 would claim perfect simultaneity on the basis of
+    # nothing.
+    attrs = freshness_attributes({"data_ts": "2026-09-10T08:15:30+02:00"})
+    assert attrs["skew_s"] is None
+    assert attrs["data_age_s"] is None
+    assert attrs["sources"] == []
+
+
+# ── which window "today" means ──────────────────────────────────────────────
+
+
+def test_today_window_is_carried_beside_the_totals():
+    attrs = today_window_attributes(
+        {"today": {"window_s": 29730, "since_t": 1757455200000, "pv_kwh": 12.3}}
+    )
+    assert attrs == {"window_s": 29730, "since_t": 1757455200000}
+
+
+def test_today_window_is_null_without_a_payload():
+    assert today_window_attributes({}) == {"window_s": None, "since_t": None}

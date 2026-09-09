@@ -43,6 +43,33 @@ def house_no_ev(data: dict[str, Any]) -> float | None:
     return round(max(float(house) - float(ev), 0.0))
 
 
+def freshness_attributes(data: dict[str, Any]) -> dict[str, Any]:
+    """How old this reading is, and how far apart the sources inside it were.
+
+    ``skew_s`` is null on a single-source site and on an edge that does not
+    report its per-source read moments — unknown, which is a real answer, and
+    the reason it sits beside the timestamp instead of inside it.
+    """
+    return {
+        "data_age_s": data.get("data_age_s"),
+        "skew_s": data.get("skew_s"),
+        "sources": data.get("sources") or [],
+    }
+
+
+def steers_anything(data: dict[str, Any]) -> bool | None:
+    """Whether Novolt actually writes to this site, or only watches it.
+
+    ``None`` when the payload does not say (a platform that predates the flag).
+    An automation that reads silence as "no" would be making the claim the flag
+    exists to avoid, so the entity layer turns this into ``unavailable``.
+    """
+    read_only = data.get("read_only")
+    if not isinstance(read_only, bool):
+        return None
+    return not read_only
+
+
 def find_charger(data: dict[str, Any], charger_id: str) -> dict[str, Any] | None:
     """The snapshot entry for one charger, or ``None`` when it is not reported."""
     for charger in data.get("chargers") or []:
@@ -112,6 +139,16 @@ def plan_series(data: dict[str, Any], field: str) -> dict[str, Any] | None:
         "method": forecast.get("method"),
         "generated_at": forecast.get("generated_at"),
     }
+
+
+def today_window_attributes(data: dict[str, Any]) -> dict[str, Any]:
+    """Which window the daily totals cover, so "today" is never assumed.
+
+    A tile that looks wrong can then be checked against the window it was
+    actually measured over instead of against the reader's guess at one.
+    """
+    today = data.get("today") or {}
+    return {"window_s": today.get("window_s"), "since_t": today.get("since_t")}
 
 
 def peak_shaving_attributes(data: dict[str, Any]) -> dict[str, Any]:
