@@ -1,0 +1,43 @@
+name: Release
+
+# HACS serves the newest GitHub *release*, not the newest commit. Every release
+# so far was tagged and published by hand, and v0.5.0 shows what that costs: the
+# manifest said 0.5.0 for seven weeks while every installation kept running
+# v0.4.1, because nobody had pressed the button. Tagging is now the whole
+# ceremony — push v0.6.0 and this publishes it.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A tag whose manifest says something else would ship a version that
+      # reports itself as another one: HACS offers v0.6.0, the integration logs
+      # 0.5.0, and the cards bust their cache on the wrong number. Refuse before
+      # the release exists rather than after someone installed it.
+      - name: Tag must match the manifest version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(python3 -c "import json;print(json.load(open('custom_components/novolt/manifest.json'))['version'])")
+          echo "tag=$tag manifest=$manifest"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::tag v$tag does not match manifest version $manifest"
+            exit 1
+          fi
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
