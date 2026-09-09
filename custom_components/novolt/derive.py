@@ -146,6 +146,34 @@ def ev_hours(data: dict[str, Any], field: str) -> int:
     return round(total)
 
 
+def ev_km(data: dict[str, Any], field: str) -> int | None:
+    """Charge kilometers across both layers, or ``None`` when nothing uses them.
+
+    The distance twin of :func:`ev_hours`, and it returns ``None`` rather than 0
+    on a site that states its charging jobs in hours: those jobs carry no
+    kilometers at all, and a zero here would read as "nothing left to charge"
+    instead of "this site does not charge in kilometers". Home Assistant renders
+    that as unavailable, which is the honest state.
+
+    Same activity rule as the hours: a daily quota only counts while it is
+    actually driving a charger.
+    """
+    ev = (data.get("plan") or {}).get("ev") or {}
+    entries = [e for e in ev.get("defaults") or [] if e.get("active")]
+    entries += list(ev.get("requests") or [])
+    total = 0.0
+    seen = False
+    for entry in entries:
+        if entry.get("goal") != "km":
+            continue
+        value = entry.get(field)
+        if value is None:
+            continue
+        seen = True
+        total += float(value)
+    return round(total) if seen else None
+
+
 def ev_hours_attributes(data: dict[str, Any]) -> dict[str, Any]:
     """The quota's breakdown, without the hour-by-hour schedules.
 

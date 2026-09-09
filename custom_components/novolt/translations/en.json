@@ -85,6 +85,8 @@
       "battery_soc_forecast": { "name": "Forecast battery" },
       "ev_hours_done": { "name": "EV charge hours done" },
       "ev_hours_remaining": { "name": "EV charge hours remaining" },
+      "ev_km_done": { "name": "EV kilometres charged" },
+      "ev_km_remaining": { "name": "EV kilometres remaining" },
       "plan_grid_peak": { "name": "Planned grid peak" },
       "charger_power": { "name": "Power" },
       "charger_session_energy": { "name": "Session energy" },

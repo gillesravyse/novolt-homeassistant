@@ -35,6 +35,7 @@ from homeassistant.const import (
     PERCENTAGE,
     UnitOfElectricCurrent,
     UnitOfEnergy,
+    UnitOfLength,
     UnitOfPower,
     UnitOfTime,
 )
@@ -50,6 +51,7 @@ from .derive import (
     charger_status,
     ev_hours,
     ev_hours_attributes,
+    ev_km,
     find_charger,
     find_pv_source,
     forecast_live,
@@ -795,6 +797,31 @@ INSIGHTS_SENSORS: tuple[NovoltInsightsSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTime.HOURS,
         value_fn=lambda d: ev_hours(d, "remaining_hours"),
+        live_fn=_plan_live,
+        exists_fn=_has_ev,
+        attributes_fn=ev_hours_attributes,
+    ),
+    # ── EV charge quota in kilometers ─────────────────────────────────────
+    # The same two numbers in the unit the customer stated the job in. Absent
+    # (unavailable) on a site that charges by the hour: see derive.ev_km.
+    NovoltInsightsSensorDescription(
+        key="ev_km_done",
+        translation_key="ev_km_done",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.KILOMETERS,
+        value_fn=lambda d: ev_km(d, "done_km"),
+        live_fn=_plan_live,
+        exists_fn=_has_ev,
+        attributes_fn=ev_hours_attributes,
+    ),
+    NovoltInsightsSensorDescription(
+        key="ev_km_remaining",
+        translation_key="ev_km_remaining",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.KILOMETERS,
+        value_fn=lambda d: ev_km(d, "remaining_km"),
         live_fn=_plan_live,
         exists_fn=_has_ev,
         attributes_fn=ev_hours_attributes,

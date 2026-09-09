@@ -85,6 +85,8 @@
       "battery_soc_forecast": { "name": "Batterie prévue" },
       "ev_hours_done": { "name": "Heures de charge VE effectuées" },
       "ev_hours_remaining": { "name": "Heures de charge VE restantes" },
+      "ev_km_done": { "name": "Kilomètres VE rechargés" },
+      "ev_km_remaining": { "name": "Kilomètres VE restants" },
       "plan_grid_peak": { "name": "Pic réseau planifié" },
       "charger_power": { "name": "Puissance" },
       "charger_session_energy": { "name": "Énergie de session" },

@@ -85,6 +85,8 @@
       "battery_soc_forecast": { "name": "Voorspelde batterijlading" },
       "ev_hours_done": { "name": "EV-laaduren gedaan" },
       "ev_hours_remaining": { "name": "EV-laaduren resterend" },
+      "ev_km_done": { "name": "EV-kilometers geladen" },
+      "ev_km_remaining": { "name": "EV-kilometers resterend" },
       "plan_grid_peak": { "name": "Geplande netpiek" },
       "charger_power": { "name": "Vermogen" },
       "charger_session_energy": { "name": "Sessie-energie" },

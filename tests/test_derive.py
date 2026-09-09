@@ -9,6 +9,7 @@ from novolt_derive import (
     CHARGER_STATUSES,
     charger_status,
     ev_hours,
+    ev_km,
     ev_hours_attributes,
     find_charger,
     find_pv_source,
@@ -272,6 +273,40 @@ def test_ev_hours_ignores_an_inactive_default():
 @pytest.mark.parametrize("data", [{"plan": {"ev": {}}}, {"plan": {}}, {}])
 def test_ev_hours_without_a_plan_is_zero(data):
     assert ev_hours(data, "done_hours") == 0
+
+
+# ── the same quota in kilometers ────────────────────────────────────────────
+
+
+def test_ev_km_sums_both_layers():
+    data = {
+        "plan": {
+            "ev": {
+                "defaults": [
+                    {"active": True, "goal": "km", "done_km": 20, "remaining_km": 40},
+                    # Covered by its own request: an inactive rule charges
+                    # nothing, so its kilometers must not be counted.
+                    {"active": False, "goal": "km", "done_km": 99, "remaining_km": 99},
+                ],
+                "requests": [
+                    {"goal": "km", "done_km": 50, "remaining_km": 100},
+                ],
+            }
+        }
+    }
+    assert ev_km(data, "done_km") == 70
+    assert ev_km(data, "remaining_km") == 140
+
+
+def test_ev_km_is_none_on_a_site_that_charges_by_the_hour():
+    """Not 0: a zero would read as "nothing left to charge" on a site whose
+    jobs simply are not stated in kilometers. HA shows that as unavailable."""
+    assert ev_km(PLAN, "remaining_km") is None
+
+
+@pytest.mark.parametrize("data", [{"plan": {"ev": {}}}, {"plan": {}}, {}])
+def test_ev_km_without_a_plan_is_none(data):
+    assert ev_km(data, "done_km") is None
 
 
 def test_ev_hours_attributes_strip_the_schedules():
