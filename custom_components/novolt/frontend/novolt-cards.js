@@ -2,7 +2,7 @@
  * Novolt Lovelace cards, shipped with the integration and auto-registered in
  * the card picker. Pure vanilla web components: no Lit, no build step, no CDN.
  *
- * Five cards, visually identical to the Novolt app (same OKLCH tokens, same
+ * Six cards, visually identical to the Novolt app (same OKLCH tokens, same
  * geometry as the app's power-flow/price-bar/plan-chart components):
  *
  *   - novolt-power-flow-card   the live energy flow diagram
@@ -10,6 +10,7 @@
  *   - novolt-stats-card        the stat tile row (price, sun, self-sufficiency…)
  *   - novolt-price-card        day-ahead price columns with the cheap EV window
  *   - novolt-forecast-card     24h plan: PV/load forecast, battery plan, SOC
+ *   - novolt-peak-card         the plan's grid peak against the configured limit
  *
  * Entities are auto-discovered from the entity registry (platform "novolt",
  * matched on translation_key, so it works in every UI language). Every value
@@ -80,6 +81,14 @@
       legSolar: "Sun", legLoad: "Consumption", legCharge: "Charging", legDischarge: "Discharging",
       now: "now", missing: "Novolt entities not found. Install and configure the Novolt integration, or set entities in the card config.",
       optFull: "Full width (entire section)", optColumns: "Width (columns, when not full width)", optRows: "Height (rows)", optReference: "Reference power (W, flow speed)",
+      notLive: "No live data", measuredAt: "measured {t}", skewApart: "sources {n}s apart",
+      fixedTariff: "Your tariff today", fixedTariffAll: "Your price, all day",
+      dayToday: "Today", dayTomorrow: "Tomorrow", aboveAvg: "above average",
+      priceFloor: "{v} € of it is fixed charges",
+      peakTitle: "Grid peak", peakPlanned: "planned by Novolt", peakLimit: "your limit {v}",
+      peakNoLimit: "no limit set", peakMeasured: "measured peak", peakNeed: "p95 need",
+      peakOver: "over your limit", peakFits: "the plan fits", peakInfeasible: "your limit looks too low for this house",
+      peakCollecting: "still collecting history ({h} of {r} h)", peakUnknown: "not enough measured history yet",
       optHint: "Size applies to sections dashboards; drag the sliders and save.",
     },
     nl: {
@@ -96,6 +105,14 @@
       legSolar: "Zon", legLoad: "Verbruik", legCharge: "Laden", legDischarge: "Ontladen",
       now: "nu", missing: "Geen Novolt-entiteiten gevonden. Installeer en configureer de Novolt-integratie, of geef entiteiten op in de kaartconfiguratie.",
       optFull: "Volledige breedte (hele sectie)", optColumns: "Breedte (kolommen, als niet op volledige breedte)", optRows: "Hoogte (rijen)", optReference: "Referentievermogen (W, stroomsnelheid)",
+      notLive: "Geen live data", measuredAt: "gemeten {t}", skewApart: "bronnen {n}s uit elkaar",
+      fixedTariff: "Jouw tarief vandaag", fixedTariffAll: "Jouw prijs, de hele dag",
+      dayToday: "Vandaag", dayTomorrow: "Morgen", aboveAvg: "boven gemiddelde",
+      priceFloor: "waarvan {v} € vaste kosten",
+      peakTitle: "Netpiek", peakPlanned: "gepland door Novolt", peakLimit: "jouw grens {v}",
+      peakNoLimit: "geen grens ingesteld", peakMeasured: "gemeten piek", peakNeed: "p95-behoefte",
+      peakOver: "boven je grens", peakFits: "het plan past", peakInfeasible: "je grens lijkt te laag voor dit huis",
+      peakCollecting: "historiek nog aan het verzamelen ({h} van {r} u)", peakUnknown: "nog te weinig gemeten historiek",
       optHint: "Formaat geldt voor secties-dashboards; sleep de sliders en sla op.",
     },
     fr: {
@@ -112,6 +129,14 @@
       legSolar: "Soleil", legLoad: "Conso", legCharge: "Charge", legDischarge: "Décharge",
       now: "mnt", missing: "Entités Novolt introuvables. Installez l'intégration Novolt ou renseignez les entités dans la configuration de la carte.",
       optFull: "Pleine largeur (toute la section)", optColumns: "Largeur (colonnes)", optRows: "Hauteur (rangées)", optReference: "Puissance de référence (W)",
+      notLive: "Pas de données en direct", measuredAt: "mesuré {t}", skewApart: "sources à {n}s d'écart",
+      fixedTariff: "Votre tarif aujourd'hui", fixedTariffAll: "Votre prix, toute la journée",
+      dayToday: "Aujourd'hui", dayTomorrow: "Demain", aboveAvg: "au-dessus de la moyenne",
+      priceFloor: "dont {v} € de frais fixes",
+      peakTitle: "Pointe réseau", peakPlanned: "prévu par Novolt", peakLimit: "votre limite {v}",
+      peakNoLimit: "aucune limite définie", peakMeasured: "pointe mesurée", peakNeed: "besoin p95",
+      peakOver: "au-dessus de votre limite", peakFits: "le plan tient", peakInfeasible: "votre limite semble trop basse pour cette maison",
+      peakCollecting: "historique en cours ({h} de {r} h)", peakUnknown: "pas encore assez d'historique mesuré",
       optHint: "La taille s'applique aux tableaux de bord en sections.",
     },
   };
@@ -199,6 +224,39 @@
   function attrs(hass, id) {
     const s = id ? hass.states[id] : undefined;
     return (s && s.attributes) || {};
+  }
+
+  /* ── when this picture was measured ─────────────────────────────────────
+   * Not `new Date()`. A clock that reads the browser keeps ticking on a dead
+   * edge and would put a fresh-looking time next to the word "Live" while the
+   * numbers beside it are minutes old. That exact clock made every "these
+   * figures don't match my HA" complaint undecidable, which is why the platform
+   * publishes the per-source read moment as `data_ts`. Unknown stays unknown.
+   */
+  function freshness(card, hass) {
+    const tsId = pickEntity(card, "data_ts");
+    const st = tsId ? hass.states[tsId] : undefined;
+    const liveId = pickEntity(card, "data_live");
+    const liveState = liveId ? hass.states[liveId] : undefined;
+    const raw = st && !["unavailable", "unknown"].includes(st.state) ? st.state : null;
+    const at = raw ? new Date(raw) : null;
+    const a = (st && st.attributes) || {};
+    return {
+      at: at && !isNaN(at) ? at.getTime() : null,
+      ageS: typeof a.data_age_s === "number" ? a.data_age_s : null,
+      skewS: typeof a.skew_s === "number" ? a.skew_s : null,
+      // No live flag at all is not the same as a false one: an install without
+      // the diagnostic entity should not be told its data is stale.
+      live: liveState ? liveState.state === "on" : null,
+    };
+  }
+  function freshnessLabel(hass, f) {
+    if (f.at == null) return "";
+    const t = new Date(f.at).toLocaleTimeString(numLocale(hass), { hour12: false });
+    const parts = [tr(hass, "measuredAt", { t })];
+    if (f.skewS != null && f.skewS >= 1)
+      parts.push(tr(hass, "skewApart", { n: Math.round(f.skewS) }));
+    return parts.join(" · ");
   }
 
   /* ── icons (24×24; tower is the app's own path, rest lucide-style) ─────── */
@@ -393,6 +451,8 @@
       .node-box .icon { width: 22px; height: 22px; }
       .node-box .val { font-size: 12.5px; font-weight: 700; margin-top: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
       .node-box .dir { font-size: 9px; font-weight: 600; letter-spacing: .06em; color: var(--nv-ink-muted); }
+      .nv-stale { color: var(--nv-solar); }
+      #clock[data-entity]:not([data-entity=""]) { cursor: pointer; }
     `;
 
     _view(hass) {
@@ -406,10 +466,13 @@
         name: c.name || c.id || "EV", w: c.power_w || 0,
       }));
       const found = [pv, grid, house, batt].some((v) => v != null);
+      const f = freshness(this, hass);
       return {
         found, pv, grid, house, batt, soc, chargers,
         hasSolar: pickEntity(this, "pv_power") != null,
         hasBattery: pickEntity(this, "battery_power") != null,
+        live: f.live, measuredAt: f.at, freshLabel: freshnessLabel(hass, f),
+        tsEntity: pickEntity(this, "data_ts") || "",
         lang: lang(hass),
       };
     }
@@ -481,8 +544,11 @@
       return `
         <div class="nv-card">
           <div class="nv-head">
-            <div><div class="nv-title">${tr(hass, "flowTitle")}</div><div class="nv-sub">${tr(hass, "live")}</div></div>
-            <div class="nv-right" id="clock"></div>
+            <div>
+              <div class="nv-title">${tr(hass, "flowTitle")}</div>
+              <div class="nv-sub">${v.live === false ? `<span class="nv-stale">${tr(hass, "notLive")}</span>` : tr(hass, "live")}</div>
+            </div>
+            <div class="nv-right" id="clock" data-entity="${v.tsEntity}">${v.freshLabel}</div>
           </div>
           <div class="flow-wrap">
             <svg class="flow" viewBox="0 0 ${VB.w} ${VB.h}">
@@ -579,8 +645,14 @@
       clearInterval(this._clockTimer);
     }
     _syncClock() {
+      // Only the label is refreshed between polls, and only from the
+      // integration's own read moment. There is deliberately no fallback to the
+      // browser clock: when the platform does not report a read moment the
+      // answer is "unknown", and an empty slot says that better than a time
+      // that is merely true of the viewer's laptop.
       const el = this.shadowRoot && this.shadowRoot.getElementById("clock");
-      if (el) el.textContent = new Date().toLocaleTimeString(numLocale(this._hass), { hour12: false });
+      if (!el || !this._hass) return;
+      el.textContent = freshnessLabel(this._hass, freshness(this, this._hass));
     }
   }
 
@@ -693,6 +765,7 @@
         injection: numState(hass, pickEntity(this, "price_injection")),
         pvToday: numState(hass, pickEntity(this, "today_pv_energy")),
         selfSuff: numState(hass, pickEntity(this, "self_sufficiency")),
+        saved: numState(hass, pickEntity(this, "today_saved")),
         cheapSub,
         found: pickEntity(this, "price_current") != null || pickEntity(this, "today_pv_energy") != null,
         lang: lang(hass),
@@ -718,7 +791,9 @@
           ${tile(ICONS.leaf, "var(--nv-battery)", tr(hass, "selfSuff"),
             v.selfSuff == null ? DASH : Math.round(v.selfSuff) + "%", "", v.selfSuff == null ? "" : tr(hass, "selfSuffSub"),
             pickEntity(this, "self_sufficiency"))}
-          ${tile(ICONS.trend, "var(--nv-battery)", tr(hass, "savedToday"), DASH, "", "", "")}
+          ${tile(ICONS.trend, "var(--nv-battery)", tr(hass, "savedToday"),
+            v.saved == null ? DASH : fmtEur(hass, v.saved) + " €", "", "",
+            pickEntity(this, "today_saved"))}
           ${tile(ICONS.zap, "var(--nv-export)", tr(hass, "injectionNow"),
             v.injection == null ? DASH : fmtEur(hass, v.injection) + " €", v.injection == null ? "" : "/kWh", "",
             pickEntity(this, "price_injection"))}
@@ -751,19 +826,49 @@
       .barcol:hover .bar-tip { display: block; }
       .barcol:hover .bar { filter: brightness(1.2); }
       .hours { display: flex; justify-content: space-between; font-size: 11px; color: var(--nv-ink-faint); margin-top: 8px; }
+      .days { display: flex; gap: 6px; margin-top: 10px; }
+      .days button {
+        font: inherit; font-size: 11.5px; padding: 3px 10px; border-radius: 999px; cursor: pointer;
+        background: var(--nv-surface-2); border: 1px solid var(--nv-border); color: var(--nv-ink-muted);
+      }
+      .days button.on { background: var(--nv-surface-3); border-color: var(--nv-border-strong); color: var(--nv-ink); }
+      .flat { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; }
+      .flat-val { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .flat-unit { font-size: 14px; color: var(--nv-ink-faint); }
     `;
+    _afterRender() {
+      this.shadowRoot.querySelectorAll("[data-day]").forEach((el) => {
+        el.addEventListener("click", () => {
+          this._day = el.getAttribute("data-day");
+          this._sig = null;
+          this._update();
+        });
+      });
+      wireMoreInfo(this);
+    }
     _view(hass) {
       const priceAttrs = attrs(hass, pickEntity(this, "price_current"));
       const evAttrs = attrs(hass, pickEntity(this, "ev_cheap_now"));
       const cheapHours = new Set(
         (evAttrs.schedule || []).filter((s) => s.charge).map((s) => new Date(s.date).getTime())
       );
-      const raw = (priceAttrs.raw_today || []).map((p) => ({
-        t: new Date(p.start).getTime(), price: p.price,
-      }));
+      const series = (key) =>
+        (priceAttrs[key] || []).map((p) => ({ t: new Date(p.start).getTime(), price: p.price }));
+      const hasTomorrow = !!priceAttrs.tomorrow_valid;
+      const day = this._day === "tomorrow" && hasTomorrow ? "tomorrow" : "today";
+      const raw = series(day === "tomorrow" ? "raw_tomorrow" : "raw_today");
       return {
-        raw, cheap: [...cheapHours], nowH: new Date().getHours(),
+        raw, day, hasTomorrow,
+        cheap: [...cheapHours], nowH: new Date().getHours(),
+        // A fixed or day/night contract pays what it says, not what the market
+        // did. Drawing 24 columns of a curve nobody is on is the mistake the
+        // platform already fixed on its side; `scheme` is how it tells us.
+        scheme: priceAttrs.scheme || null,
+        // How much of the price never moves (grid fee, levies, VAT). Stated, so
+        // "free electricity" can be read off the part that actually moves.
+        floor: typeof priceAttrs.price_floor === "number" ? priceAttrs.price_floor : null,
         found: pickEntity(this, "price_current") != null,
+        entity: pickEntity(this, "price_current") || "",
         lang: lang(hass),
       };
     }
@@ -774,32 +879,71 @@
         return `<div class="nv-card">
           <div class="nv-head"><div class="nv-title">${tr(hass, "priceTitle")}</div></div>
           <div class="nv-missing">${DASH}</div></div>`;
+
+      // A contract that does not move gets the price, not a chart of it. Columns
+      // here would be 24 identical bars with a "cheap hours" legend over them,
+      // which is a curve this customer is not on.
+      if (v.scheme && v.scheme !== "dynamic") {
+        const price = v.raw[Math.min(v.nowH, v.raw.length - 1)].price;
+        return `
+          <div class="nv-card">
+            <div class="nv-head"><div>
+              <div class="nv-title">${tr(hass, "fixedTariff")}</div>
+              <div class="nv-sub">${tr(hass, "fixedTariffAll")}</div>
+            </div></div>
+            <div class="flat" data-entity="${v.entity}">
+              <span class="flat-val">${fmtEur(hass, price, 4)} €</span><span class="flat-unit">/kWh</span>
+            </div>
+          </div>`;
+      }
+
       const cheapSet = new Set(v.cheap);
       const max = Math.max(...v.raw.map((p) => p.price), 0.01);
       const nCheap = v.raw.filter((p) => cheapSet.has(p.t)).length;
+      // "Expensive" used to be a hard-coded 0.28 €/kWh, which is a claim about
+      // the Belgian market in general and about nobody's own day in particular.
+      // The day's own mean is the comparison the bar is actually making.
+      const mean = v.raw.reduce((a, p) => a + p.price, 0) / v.raw.length;
       const bars = v.raw.map((p) => {
-        const h = new Date(p.t).getHours();
-        const isNow = h === v.nowH;
+        const d = new Date(p.t);
+        const h = d.getHours();
+        const isNow = v.day === "today" && h === v.nowH;
         const pct = Math.max((p.price / max) * 100, 3);
         const color = cheapSet.has(p.t)
           ? "var(--nv-battery)"
-          : p.price > 0.28
+          : p.price > mean
             ? "var(--nv-grid)"
             : "var(--nv-surface-3)";
         const hourLbl = tr(hass, "hour", { h: String(h).padStart(2, "0") });
         return `<div class="barcol"><div class="bar-tip"><b>${hourLbl}</b> · ${fmtEur(hass, p.price)} €</div><div class="bar" style="height:${pct}%;background:${color};${isNow ? "outline:1.5px solid var(--nv-solar);outline-offset:1px;" : ""}"></div></div>`;
       }).join("");
       const hourMark = (h) => tr(hass, "hour", { h });
+      // Tomorrow's curve lands around 13:00 and was sitting unused in the
+      // attribute. No switch until there is a second day to switch to.
+      const dayTabs = v.hasTomorrow
+        ? `<div class="days">
+             <button data-day="today" class="${v.day === "today" ? "on" : ""}">${tr(hass, "dayToday")}</button>
+             <button data-day="tomorrow" class="${v.day === "tomorrow" ? "on" : ""}">${tr(hass, "dayTomorrow")}</button>
+           </div>`
+        : "";
+      const sub = v.day === "today"
+        ? tr(hass, "priceSub", { n: nCheap })
+        : tr(hass, "dayTomorrow");
+      const floorNote = v.floor
+        ? `<div class="nv-sub">${tr(hass, "priceFloor", { v: fmtEur(hass, v.floor, 4) })}</div>`
+        : "";
       return `
         <div class="nv-card">
           <div class="nv-head">
             <div><div class="nv-title">${tr(hass, "priceTitle")}</div>
-            <div class="nv-sub">${tr(hass, "priceSub", { n: nCheap })}</div></div>
+            <div class="nv-sub">${sub}</div>
+            ${floorNote}</div>
             <div class="nv-legend">
               <span><span class="nv-dot" style="background:var(--nv-battery)"></span>${tr(hass, "cheap")}</span>
-              <span><span class="nv-dot" style="background:var(--nv-grid)"></span>${tr(hass, "expensive")}</span>
+              <span><span class="nv-dot" style="background:var(--nv-grid)"></span>${tr(hass, "aboveAvg")}</span>
             </div>
           </div>
+          ${dayTabs}
           <div class="bars">${bars}</div>
           <div class="hours"><span>${hourMark("00")}</span><span>${hourMark("06")}</span><span>${hourMark("12")}</span><span>${hourMark("18")}</span><span>${hourMark("24")}</span></div>
         </div>`;
@@ -1026,6 +1170,118 @@
     }
   }
 
+  /* ═══════════════════════════ 6. grid peak ══════════════════════════════ */
+
+  /**
+   * The plan's own grid peak, with the measured reality beside it.
+   *
+   * `peak_w`/`within_limit` describe the SCHEDULE, not the house: the LP bounds
+   * its import variable by the limit, so "within limit" is near-tautological on
+   * an optimal solve. It says the plan obeys the ceiling, never that the site
+   * can. `measured_peak_w` is the reality check, and the platform's rule is that
+   * a client shows both or neither — so the measured slot is always rendered,
+   * as a dash when there is not enough history, never silently dropped.
+   */
+  class NovoltPeakCard extends NovoltBaseCard {
+    static cardSize = 3;
+    getGridOptions() {
+      return { columns: "full", rows: 3, min_columns: 6, min_rows: 2 };
+    }
+    static getConfigElement() {
+      return sizeEditor({ columns: "full", rows: 3, minColumns: 6, minRows: 2 });
+    }
+    _afterRender() {
+      wireMoreInfo(this);
+    }
+    static css = `
+      .nv-card { display: flex; flex-direction: column; }
+      .peak-main { display: flex; align-items: baseline; gap: 6px; margin-top: 6px; cursor: pointer; }
+      .peak-val { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .peak-unit { font-size: 13px; color: var(--nv-ink-faint); }
+      .track {
+        position: relative; height: 8px; border-radius: 999px;
+        background: var(--nv-surface-3); margin-top: 14px; overflow: hidden;
+      }
+      .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; transition: width .3s; }
+      .limit-mark { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--nv-ink); }
+      .peak-foot { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; }
+      .peak-foot div { color: var(--nv-ink-faint); }
+      .peak-foot b { display: block; color: var(--nv-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+      .verdict { margin-top: 10px; font-size: 12px; }
+      .verdict.bad { color: var(--nv-solar); }
+    `;
+    _view(hass) {
+      const id = pickEntity(this, "plan_grid_peak");
+      const a = attrs(hass, id);
+      const num = (x) => (typeof x === "number" ? x : null);
+      return {
+        found: id != null,
+        entity: id || "",
+        planned: numState(hass, id),
+        limit: num(a.limit_w),
+        measured: num(a.measured_peak_w),
+        need: num(a.p95_grid_need_w),
+        feasible: typeof a.feasible === "boolean" ? a.feasible : null,
+        historyH: num(a.history_hours),
+        historyReq: num(a.history_hours_required),
+        lang: lang(hass),
+      };
+    }
+    _render(v) {
+      const hass = this._hass;
+      if (!v.found) return this._missing(hass);
+
+      // The scale is the widest thing on the card, so the bar never overflows
+      // and a plan above the limit is visibly above it.
+      const scale = Math.max(v.planned || 0, v.limit || 0, v.measured || 0, 1);
+      const pct = (w) => (w == null ? null : Math.min(100, (w / scale) * 100));
+      const over = v.limit != null && v.planned != null && v.planned > v.limit;
+      const fillColor = over ? "var(--nv-solar)" : "var(--nv-battery)";
+
+      let verdict = "";
+      let bad = false;
+      if (v.limit == null) verdict = tr(hass, "peakNoLimit");
+      else if (v.historyH != null && v.historyReq != null && v.historyH < v.historyReq) {
+        verdict = tr(hass, "peakCollecting", {
+          h: Math.round(v.historyH), r: Math.round(v.historyReq),
+        });
+      } else if (v.feasible === false) {
+        verdict = tr(hass, "peakInfeasible");
+        bad = true;
+      } else if (v.feasible === true) verdict = tr(hass, "peakFits");
+      else verdict = tr(hass, "peakUnknown");
+
+      const sub = v.limit == null
+        ? tr(hass, "peakPlanned")
+        : `${tr(hass, "peakPlanned")} · ${tr(hass, "peakLimit", { v: fmtPowerStr(hass, v.limit) })}`;
+      const limitPct = pct(v.limit);
+
+      return `
+        <div class="nv-card">
+          <div class="nv-head"><div>
+            <div class="nv-title">${tr(hass, "peakTitle")}</div>
+            <div class="nv-sub">${sub}</div>
+          </div></div>
+          <div class="peak-main" data-entity="${v.entity}">
+            ${v.planned == null
+              ? `<span class="peak-val">${DASH}</span>`
+              : `<span class="peak-val" style="color:${fillColor}">${fmtPower(hass, v.planned).value}</span>
+                 <span class="peak-unit">${fmtPower(hass, v.planned).unit}</span>`}
+            ${over ? `<span class="peak-unit" style="color:var(--nv-solar)">${tr(hass, "peakOver")}</span>` : ""}
+          </div>
+          <div class="track">
+            ${v.planned == null ? "" : `<div class="fill" style="width:${pct(v.planned)}%;background:${fillColor}"></div>`}
+            ${limitPct == null ? "" : `<div class="limit-mark" style="left:${limitPct}%"></div>`}
+          </div>
+          <div class="peak-foot">
+            <div>${tr(hass, "peakMeasured")}<b>${v.measured == null ? DASH : fmtPowerStr(hass, v.measured)}</b></div>
+            <div>${tr(hass, "peakNeed")}<b>${v.need == null ? DASH : fmtPowerStr(hass, v.need)}</b></div>
+          </div>
+          <div class="verdict${bad ? " bad" : ""}">${verdict}</div>
+        </div>`;
+    }
+  }
+
   /* ── registration ──────────────────────────────────────────────────────── */
   const CARDS = [
     ["novolt-power-flow-card", NovoltPowerFlowCard, "Novolt Energy Flow", "Live energy flow between sun, grid, home, battery and EV chargers."],
@@ -1033,6 +1289,7 @@
     ["novolt-stats-card", NovoltStatsCard, "Novolt Stats", "Stat tiles: current price, sun today, self-sufficiency and injection."],
     ["novolt-price-card", NovoltPriceCard, "Novolt Prices", "Day-ahead price columns with the selected cheap charging hours."],
     ["novolt-forecast-card", NovoltForecastCard, "Novolt Forecast", "24h forecast: sun, consumption, battery plan and state of charge."],
+    ["novolt-peak-card", NovoltPeakCard, "Novolt Grid Peak", "The plan's grid peak against your limit, with the measured peak beside it."],
   ];
   window.customCards = window.customCards || [];
   for (const [tag, , name, description] of CARDS) {

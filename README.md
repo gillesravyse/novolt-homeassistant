@@ -68,15 +68,16 @@ These counters integrate the live power readings client-side (trapezoid rule) an
 
 ## Bundled dashboard cards
 
-The integration ships five custom Lovelace cards, styled identically to the Novolt app. No extra install and no resource configuration: after adding the integration they simply appear in the card picker (**Add card → search "Novolt"**). Entities are auto-discovered, so an empty config `{}` works in any language:
+The integration ships six custom Lovelace cards, styled identically to the Novolt app. No extra install and no resource configuration: after adding the integration they simply appear in the card picker (**Add card → search "Novolt"**). Entities are auto-discovered, so an empty config `{}` works in any language:
 
 | Card | What it shows |
 | --- | --- |
-| `custom:novolt-power-flow-card` | The live energy flow between sun, grid, home, battery and EV chargers, with animated flows and the SOC ring |
+| `custom:novolt-power-flow-card` | The live energy flow between sun, grid, home, battery and EV chargers, with animated flows and the SOC ring. The time in the corner is when the data was *measured*, not the time on your screen |
 | `custom:novolt-battery-card` | State-of-charge ring plus today's charged and discharged energy |
 | `custom:novolt-stats-card` | Stat tiles: current price (with the next cheap hour), sun today, self-sufficiency and injection price |
-| `custom:novolt-price-card` | Day-ahead price columns with the selected cheap charging hours and a now-marker |
+| `custom:novolt-price-card` | Day-ahead price columns with the selected cheap charging hours and a now-marker, plus tomorrow once it is published. On a fixed or day/night contract it shows your price instead of a curve you are not on |
 | `custom:novolt-forecast-card` | The 24 h plan: sun and consumption forecast, battery charge/discharge plan and SOC trajectory |
+| `custom:novolt-peak-card` | The peak the plan draws against your grid limit, with the *measured* peak and the p95 need beside it |
 
 Every card accepts optional overrides when auto-discovery is not what you want:
 
