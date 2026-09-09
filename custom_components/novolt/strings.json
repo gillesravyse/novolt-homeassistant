@@ -111,7 +111,7 @@
     "binary_sensor": {
       "data_live": { "name": "Live data" },
       "prices_live": { "name": "Live prices" },
-      "steering": { "name": "Steering" },
+      "steering": { "name": "Steered by Novolt" },
       "ev_cheap_now": { "name": "EV cheap hour" },
       "ev_charging": { "name": "EV charging" },
       "charger_online": { "name": "Online" },

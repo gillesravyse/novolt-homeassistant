@@ -48,11 +48,13 @@ SNAPSHOT_BINARY_SENSORS: tuple[NovoltBinarySensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: bool(d.get("prices_live")),
     ),
-    # Do we actually steer this site, or do we only watch it. An automation
-    # that assumes Novolt is dispatching the battery while the site sits in
-    # shadow mode would be acting on a claim nobody made, so the claim gets
-    # its own entity. ``read_only`` is the site-wide answer (we write nowhere);
-    # the battery-specific one rides along as an attribute.
+    # Does *Novolt* steer this site, or does it only watch. This reports what
+    # the platform does; it is not a control, and Home Assistant cannot steer
+    # anything through this integration at all — the API keys are read-only by
+    # construction. An automation that assumes Novolt is dispatching the battery
+    # while the site sits in shadow mode would be acting on a claim nobody made,
+    # so the claim gets its own entity. ``read_only`` is the site-wide answer
+    # (we write nowhere); the battery-specific one rides along as an attribute.
     #
     # Unavailable rather than ``off`` when the field is absent: a platform that
     # predates it says nothing about steering, and "nothing" must not be read

@@ -111,7 +111,7 @@
     "binary_sensor": {
       "data_live": { "name": "Données en direct" },
       "prices_live": { "name": "Prix en direct" },
-      "steering": { "name": "Pilotage" },
+      "steering": { "name": "Piloté par Novolt" },
       "ev_cheap_now": { "name": "Heure creuse VE" },
       "ev_charging": { "name": "Charge VE" },
       "charger_online": { "name": "En ligne" },

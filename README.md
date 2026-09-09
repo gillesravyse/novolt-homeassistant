@@ -179,7 +179,7 @@ actions:
 | EV charging | Whether any charger is actually delivering power right now |
 | … today | Energy aggregates and self-sufficiency since local midnight, as reported by Novolt |
 | Live data / Live prices | Diagnostic flags: is fresh telemetry / a real price curve available? |
-| Steering | Diagnostic: does Novolt actually write to this site, or only watch it? `unavailable` when the platform does not say, because silence is not a "no" |
+| Steered by Novolt | Diagnostic: does the Novolt platform actually write to this site, or only watch it? This reports what Novolt does, it is not a control: Home Assistant cannot steer anything through this integration. `unavailable` when the platform does not say, because silence is not a "no" |
 | Last measurement | Diagnostic: when this picture was measured (not when we asked), with the age and the spread between sources in its attributes. It survives the staleness it reports, so it is what tells you *why* the rest went unavailable |
 
 ### On each charger device
